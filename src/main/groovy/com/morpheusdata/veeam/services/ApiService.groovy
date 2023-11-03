@@ -21,9 +21,15 @@ class ApiService {
 		return rtn + headers
 	}
 
+	def getApiUrl(BackupProvider backupProvider) {
+		def scheme = backupProvider.host.contains('http') ? '' : 'http://'
+		def apiUrl = "${scheme}${backupProvider.host}:${backupProvider.port}"
+		return apiUrl
+	}
+
 	Map getAuthConfig(BackupProvider backupProviderModel) {
 		def rtn = [
-			apiUrl: backupProviderModel.host,
+			apiUrl: getApiUrl(backupProviderModel),
 			basePath: '/api',
 			username: backupProviderModel.credentialData?.username ?: backupProviderModel.username,
 			password: backupProviderModel.credentialData?.password ?: backupProviderModel.password
@@ -97,7 +103,7 @@ class ApiService {
 		def headers = buildHeaders([:], token)
 		HttpApiClient httpApiClient = new HttpApiClient()
 		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers)
-		def results = httpApiClient.callXmlApi(url, "/api/logonSessions/${sessionId}", requestOpts, 'DELETE')
+		def results = httpApiClient.callXmlApi(url.toString(), "/api/logonSessions/${sessionId}".toString(), null, null, requestOpts, 'DELETE')
 		log.debug("got: ${results}")
 		rtn.success = results?.success
 		return rtn
