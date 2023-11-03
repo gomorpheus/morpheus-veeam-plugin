@@ -1,4 +1,4 @@
-package com.morpheusdata
+package com.morpheusdata.veeam
 
 import com.morpheusdata.core.MorpheusContext
 import com.morpheusdata.core.Plugin
@@ -17,12 +17,12 @@ import groovy.util.logging.Slf4j
  * the {@link BackupTypeProvider BackupTypeProviders} implemented within the provider.
  */
 @Slf4j
-class VeeamBackupTypeProvider extends AbstractBackupTypeProvider {
+class VeeamVMWareBackupTypeProvider extends AbstractBackupTypeProvider {
 
 	BackupExecutionProvider executionProvider;
 	BackupRestoreProvider restoreProvider;
 
-	VeeamBackupTypeProvider(Plugin plugin, MorpheusContext morpheusContext) {
+	VeeamVMWareBackupTypeProvider(Plugin plugin, MorpheusContext morpheusContext) {
 		super(plugin, morpheusContext)
 	}
 
@@ -33,7 +33,7 @@ class VeeamBackupTypeProvider extends AbstractBackupTypeProvider {
 	 */
 	@Override
 	String getCode() {
-		return "veeamBackupTypeProvider"
+		return "veeamVMWareBackup"
 	}
 
 	/**
@@ -44,7 +44,7 @@ class VeeamBackupTypeProvider extends AbstractBackupTypeProvider {
 	 */
 	@Override
 	String getName() {
-		return "veeam-backupTypeProvider"
+		return "veeam-vmware-backupTypeProvider"
 	}
 	
 	/**
@@ -98,7 +98,7 @@ class VeeamBackupTypeProvider extends AbstractBackupTypeProvider {
 	 */
 	@Override
 	String getRestoreType() {
-		return "online"
+		return "offline"
 	}
 
 	/**

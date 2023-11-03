@@ -1,25 +1,31 @@
-package com.morpheusdata
+package com.morpheusdata.veeam
 
 import com.morpheusdata.core.MorpheusContext
 import com.morpheusdata.core.Plugin
 import com.morpheusdata.core.backup.AbstractBackupProvider
 import com.morpheusdata.core.backup.BackupJobProvider
+import com.morpheusdata.core.backup.BackupTypeProvider
 import com.morpheusdata.core.backup.DefaultBackupJobProvider
 import com.morpheusdata.model.BackupProvider as BackupProviderModel
 import com.morpheusdata.model.Icon
 import com.morpheusdata.model.OptionType
 import com.morpheusdata.response.ServiceResponse
+import com.morpheusdata.veeam.services.ApiService
+import groovy.json.JsonOutput
 import groovy.util.logging.Slf4j
 
 @Slf4j
 class VeeamBackupProvider extends AbstractBackupProvider {
 
+	ApiService apiService
+
 	BackupJobProvider backupJobProvider;
 
 	VeeamBackupProvider(Plugin plugin, MorpheusContext morpheusContext) {
 		super(plugin, morpheusContext)
+		apiService = new ApiService()
 
-		VeeamBackupTypeProvider backupTypeProvider = new VeeamBackupTypeProvider(plugin, morpheus)
+		VeeamVMWareBackupTypeProvider backupTypeProvider = new VeeamVMWareBackupTypeProvider(plugin, morpheus)
 		plugin.registerProvider(backupTypeProvider)
 		addScopedProvider(backupTypeProvider, "vmware", null)
 	}
@@ -31,7 +37,7 @@ class VeeamBackupProvider extends AbstractBackupProvider {
 	 */
 	@Override
 	String getCode() {
-		return 'veeam-backup'
+		return 'veeam'
 	}
 
 	/**
@@ -42,7 +48,7 @@ class VeeamBackupProvider extends AbstractBackupProvider {
 	 */
 	@Override
 	String getName() {
-		return 'veeam Backup Provider'
+		return 'Veeam'
 	}
 	
 	/**
@@ -71,7 +77,7 @@ class VeeamBackupProvider extends AbstractBackupProvider {
 	 * The backup provider supports restoring to a new workload.
 	 */
 	@Override
-	public Boolean getRestoreNewEnabled() { return true; }
+	public Boolean getRestoreNewEnabled() { return false; }
 
 	/**
 	 * The backup provider supports backups. For example, a backup provider may be intended for disaster recovery failover
@@ -84,7 +90,7 @@ class VeeamBackupProvider extends AbstractBackupProvider {
 	 * The backup provider supports creating new jobs.
 	 */
 	@Override
-	public Boolean getHasCreateJob() { return true; }
+	public Boolean getHasCreateJob() { return false; }
 
 	/**
 	 * The backup provider supports cloning a job from an existing job.
@@ -102,7 +108,7 @@ class VeeamBackupProvider extends AbstractBackupProvider {
 	 * The backup provider supports backups outside an encapsulating job.
 	 */
 	@Override
-	public Boolean getHasOptionalJob() { return true; }
+	public Boolean getHasOptionalJob() { return false; }
 
 	/**
 	 * The backup provider supports scheduled backups. This is primarily used for display of hte schedules and providing
@@ -121,7 +127,16 @@ class VeeamBackupProvider extends AbstractBackupProvider {
 	 * The backup provider supports retention counts for maintaining the desired number of backups.
 	 */
 	@Override
-	public Boolean getHasRetentionCount() { return true; }
+	public Boolean getHasRetentionCount() { return false; }
+
+	@Override
+	public Boolean getHasRepositories() { return true }
+
+	@Override
+	Boolean getHasServers() { return true }
+
+	@Override
+	String getDefaultJobType() { return null }
 
 	/**
 	 * Get the list of option types for the backup provider. The option types are used for creating and updating an
@@ -129,7 +144,37 @@ class VeeamBackupProvider extends AbstractBackupProvider {
 	 */
 	@Override
 	Collection<OptionType> getOptionTypes() {
-		Collection<OptionType> optionTypes = []
+		Collection<OptionType> optionTypes = new ArrayList();
+		optionTypes << new OptionType(
+				code:"backupProviderType.${this.getCode()}.host", inputType:OptionType.InputType.TEXT, name:'host', category:"backupProviderType.${this.getCode()}",
+				fieldName:'host', fieldCode: 'gomorpheus.optiontype.ApiUrl', fieldLabel:'Host', fieldContext:'domain', fieldGroup:'default',
+				required:true, enabled:true, editable:true, global:false, placeHolder:null, helpBlock:'', defaultValue:null, custom:false,
+				displayOrder:10, fieldClass:null
+		)
+		optionTypes << new OptionType(
+				code:"backupProviderType.${this.getCode()}.port", inputType:OptionType.InputType.NUMBER, name:'port', category:"backupProviderType.${this.getCode()}",
+				fieldName:'port', fieldCode: 'gomorpheus.optiontype.Port', fieldLabel:'Port', fieldContext:'domain', fieldGroup:'default',
+				required:false, enabled:true, editable:true, global:false, placeHolder:null, helpBlock:'', defaultValue:null, custom:false,
+				displayOrder:15, fieldClass:null
+		)
+		optionTypes << new OptionType(
+				code:"backupProviderType.${this.getCode()}.credential", inputType:OptionType.InputType.CREDENTIAL, name:'credentials', category:"backupProviderType.${this.getCode()}",
+				fieldName:'type', fieldCode:'gomorpheus.label.credentials', fieldLabel:'Credentials', fieldContext:'credential', optionSource:'credentials',
+				required:true, enabled:true, editable:true, global:false, placeHolder:null, helpBlock:'', defaultValue:'local', custom:false,
+				displayOrder:25, fieldClass:null, wrapperClass:null, config: JsonOutput.toJson([credentialTypes:['username-password']]).toString()
+		)
+		optionTypes << new OptionType(
+				code:"backupProviderType.${this.getCode()}.username", inputType:OptionType.InputType.TEXT, name:'username', category:"backupProviderType.${this.getCode()}",
+				fieldName:'username', fieldCode: 'gomorpheus.optiontype.Username', fieldLabel:'Username', fieldContext:'domain', fieldGroup:'default',
+				required:false, enabled:true, editable:true, global:false, placeHolder:null, helpBlock:'', defaultValue:null, custom:false,
+				displayOrder:30, fieldClass:null, localCredential:true
+		)
+		optionTypes << new OptionType(
+				code:"backupProviderType.${this.getCode()}.password", inputType:OptionType.InputType.PASSWORD, name:'password', category:"backupProviderType.${this.getCode()}",
+				fieldName:'password', fieldCode: 'gomorpheus.optiontype.Password', fieldLabel:'Password', fieldContext:'domain', fieldGroup:'default',
+				required:false, enabled:true, editable:true, global:false, placeHolder:null, helpBlock:'', defaultValue:null, custom:false,
+				displayOrder:35, fieldClass:null, localCredential:true
+		)
 		return optionTypes
 	}
 
@@ -140,7 +185,7 @@ class VeeamBackupProvider extends AbstractBackupProvider {
 	@Override
 	Collection<OptionType> getReplicationGroupOptionTypes() {
 		Collection<OptionType> optionTypes = []
-		return optionTypes;
+		return optionTypes
 	}
 	
 	/**
@@ -223,8 +268,42 @@ class VeeamBackupProvider extends AbstractBackupProvider {
 	 */
 	@Override
 	ServiceResponse validateBackupProvider(BackupProviderModel backupProviderModel, Map opts) {
-		def rtn = ServiceResponse.success(backupProviderModel)
-		return rtn
+		log.debug "validateBackupProvider: ${backupProviderModel}"
+		def rtn = [success:false, errors:[:]]
+		try {
+			def apiOpts = [:]
+
+			def localCredentials = (backupProviderModel.credentialData?.type ?: 'local') == 'local'
+			if(localCredentials && !backupProviderModel?.credentialData?.password) {
+				rtn.msg = rtn.msg ?: 'Enter a password'
+				rtn.errors.password = 'Enter a password'
+			}
+			if(localCredentials && !backupProviderModel?.credentialData?.username) {
+				rtn.msg = rtn.msg ?: 'Enter a usrename'
+				rtn.errors.username = 'Enter a username'
+			}
+			if(rtn.errors.size() == 0) {
+				def testResults = verifyAuthentication(backupProviderModel, apiOpts)
+				log.debug("veeam test results: {}", testResults)
+				if(testResults.success == true)
+					rtn.success = true
+				else if(testResults.invalidLogin == true)
+					rtn.msg = testResults.msg ?: 'unauthorized - invalid credentials'
+				else if(testResults.found == false)
+					rtn.msg = testResults.msg ?: 'veeam not found - invalid host'
+				else
+					rtn.msg = testResults.msg ?: 'unable to connect to veeam'
+			}
+		} catch(e) {
+			log.error("error validating veeam configuration: ${e}", e)
+			rtn.msg = 'unknown error connecting to veeam'
+			rtn.success = false
+		}
+		if(rtn.success) {
+			return ServiceResponse.success(backupProviderModel, rtn.msg)
+		} else {
+			return ServiceResponse.error(rtn.msg, rtn.errors as Map, backupProviderModel)
+		}
 	}
 
 	/**
@@ -237,7 +316,24 @@ class VeeamBackupProvider extends AbstractBackupProvider {
 	 */
 	@Override
 	ServiceResponse deleteBackupProvider(BackupProviderModel backupProviderModel, Map opts) {
-		return ServiceResponse.success()
+		log.debug "deleteBackupProvider: ${backupProviderModel}"
+
+		def rtn = [success: true, data:backupProviderModel]
+
+		def msCleanupResults = clearManagedServers(backupProviderModel, opts)
+		if(!msCleanupResults.success) {
+			rtn.success = false
+			rtn.msg = msCleanupResults.msg
+		}
+		if(rtn.success) {
+			def bsCleanupResults = clearBackupServers(backupProviderModel, opts)
+			if(!bsCleanupResults.success) {
+				rtn.success = false
+				rtn.msg = bsCleanupResults.msg
+			}
+		}
+
+		return ServiceResponse.create(rtn)
 	}
 
 	/**
@@ -249,5 +345,48 @@ class VeeamBackupProvider extends AbstractBackupProvider {
 	@Override
 	ServiceResponse refresh(BackupProviderModel backupProviderModel) {
 		return ServiceResponse.success()
+	}
+
+	private verifyAuthentication(BackupProviderModel backupProviderModel, Map opts) {
+		def rtn = [success:false, invalidLogin:false, found:true]
+		opts.authConfig = opts.authConfig ?: apiService.getAuthConfig(backupProviderModel)
+		def tokenResults = apiService.loginSession(opts.authConfig)
+		if(tokenResults.success == true) {
+			rtn.success = true
+			def token = tokenResults.token
+			def sessionId = tokenResults.sessionId
+			apiService.logoutSession(opts.authConfig.apiUrl, token, sessionId)
+		} else {
+			if(tokenResults?.errorCode == '404' || tokenResults?.errorCode == 404)
+				rtn.found = false
+			if(tokenResults?.errorCode == '401' || tokenResults?.errorCode == 401)
+				rtn.invalidLogin = true
+		}
+		return rtn
+	}
+
+	def clearManagedServers(BackupProviderModel backupProvider, Map opts=[:]) {
+		def rtn = [success: true]
+		try {
+			// TODO
+		} catch (Exception e) {
+			log.error("Error removing managed servers for backup provider {}[{}]", backupProvider.name, backupProvider.id)
+			rtn.msg = "Error removing managed servers: ${e}"
+			rtn.success = false
+		}
+		return rtn
+
+	}
+
+	def clearBackupServers(BackupProviderModel backupProvider, Map opts=[:]) {
+		def rtn = [success: true]
+		try {
+			// TODO
+		} catch (Exception e) {
+			log.error("Error removing backup servers for backup provider {}[{}]", backupProvider.name, backupProvider.id)
+			rtn.msg = "Error removing backup servers: ${e}"
+			rtn.success = false
+		}
+		return rtn
 	}
 }

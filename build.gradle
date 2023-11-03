@@ -9,7 +9,7 @@ buildscript {
     }
     dependencies {
         classpath "com.github.johnrengelman:shadow:8.1.1"
-        classpath "com.morpheusdata:morpheus-plugin-gradle:$morpheusApiVersion"
+        classpath "com.morpheusdata:morpheus-plugin-gradle:$morphGradleVersion"
         classpath "com.bertramlabs.plugins:asset-pipeline-gradle:$assetPipelineVersion"
     }
 }

@@ -13,7 +13,7 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 */
-package com.morpheusdata
+package com.morpheusdata.veeam
 
 import com.morpheusdata.core.Plugin
 
@@ -21,13 +21,14 @@ class VeeamPlugin extends Plugin {
 
     @Override
     String getCode() {
-        return 'veeam'
+        return 'morpheus-veeam-plugin'
     }
 
     @Override
     void initialize() {
-        this.setName("morpheus-veeam-plugin")
+        this.setName("Veeam")
         this.registerProvider(new VeeamBackupProvider(this,this.morpheus))
+	    this.registerProvider(new VeeamOptionSourceProvider(this,this.morpheus))
     }
 
     /**
@@ -35,6 +36,10 @@ class VeeamPlugin extends Plugin {
      */
     @Override
     void onDestroy() {
-        //nothing to do for now
+	    List<String> seedsToRun = [
+		    "application.BackupTypeSeed",
+		    "application.BackupIntegrationSeed"
+	    ]
+	    morpheus.services.seed.reinstallSeedData(seedsToRun) // needs to be synchronous to prevent seeds from running during plugin install
     }
 }

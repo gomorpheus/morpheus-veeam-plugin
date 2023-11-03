@@ -1,4 +1,4 @@
-package com.morpheusdata
+package com.morpheusdata.veeam
 
 import com.morpheusdata.core.MorpheusContext
 import com.morpheusdata.core.Plugin
