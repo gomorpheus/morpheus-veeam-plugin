@@ -6,11 +6,13 @@ import com.morpheusdata.core.backup.AbstractBackupProvider
 import com.morpheusdata.core.backup.BackupJobProvider
 import com.morpheusdata.core.backup.BackupTypeProvider
 import com.morpheusdata.core.backup.DefaultBackupJobProvider
+import com.morpheusdata.core.util.ConnectionUtils
 import com.morpheusdata.model.BackupProvider as BackupProviderModel
 import com.morpheusdata.model.Icon
 import com.morpheusdata.model.OptionType
 import com.morpheusdata.response.ServiceResponse
 import com.morpheusdata.veeam.services.ApiService
+import com.morpheusdata.veeam.sync.*
 import groovy.json.JsonOutput
 import groovy.util.logging.Slf4j
 
@@ -344,10 +346,50 @@ class VeeamBackupProvider extends AbstractBackupProvider {
 	 */
 	@Override
 	ServiceResponse refresh(BackupProviderModel backupProviderModel) {
-		return ServiceResponse.success()
+		log.debug "refresh: ${backupProviderModel}"
+
+		ServiceResponse rtn = new ServiceResponse(success: false)
+		try {
+			def authConfig = apiService.getAuthConfig(backupProviderModel)
+			def apiUrl = authConfig.apiUrl
+			def apiUri = new URI(apiUrl)
+			def apiHost = apiUri.getHost()
+			def apiPort = apiUri.getPort() ?: apiUrl?.startsWith('https') ? 443 : 80
+
+			def hostOnline = ConnectionUtils.testHostConnectivity(apiHost, apiPort, true, true, null)
+			log.debug("veeam host online: {}", hostOnline)
+			if(hostOnline) {
+				def testResults = verifyAuthentication(backupProviderModel)
+				if(testResults.success) {
+					morpheus.async.backupProvider.updateStatus(backupProviderModel, 'ok', null).subscribe().dispose()
+
+					new BackupJobSync(backupProviderModel, plugin).execute()
+					new BackupRepositorySync(backupProviderModel, plugin).execute()
+					new ManagedServerSync(backupProviderModel, plugin).execute()
+					new BackupServerSync(backupProviderModel, plugin).execute()
+
+					updateApiVersion(backupProviderModel)
+					rtn.success = true
+				} else {
+					if(testResults.invalidLogin == true) {
+						log.debug("refreshBackupProvider: Invalid credentials")
+						morpheus.async.backupProvider.updateStatus(backupProviderModel, 'error', 'invalid credentials').subscribe().dispose()
+					} else {
+						log.debug("refreshBackupProvider: error connecting to host")
+						morpheus.async.backupProvider.updateStatus(backupProviderModel, 'error', 'error connecting').subscribe().dispose()
+					}
+				}
+			} else {
+				log.error("refreshBackupProvider: host not reachable")
+				morpheus.async.backupProvider.updateStatus(backupProviderModel, 'offline', 'Veeam not reachable').subscribe().dispose()
+			}
+		} catch(e) {
+			log.error("refreshBackupProvider error: ${e}", e)
+		}
+		rtn
 	}
 
-	private verifyAuthentication(BackupProviderModel backupProviderModel, Map opts) {
+	private verifyAuthentication(BackupProviderModel backupProviderModel, Map opts=[:]) {
 		def rtn = [success:false, invalidLogin:false, found:true]
 		opts.authConfig = opts.authConfig ?: apiService.getAuthConfig(backupProviderModel)
 		def tokenResults = apiService.loginSession(opts.authConfig)
@@ -388,5 +430,25 @@ class VeeamBackupProvider extends AbstractBackupProvider {
 			rtn.success = false
 		}
 		return rtn
+	}
+
+	def updateApiVersion(BackupProviderModel backupProviderModel) {
+		def rtn = [success:false]
+		try {
+			log.debug("Checking API version updates.")
+			def authConfig = apiService.getAuthConfig(backupProviderModel)
+			def latestVersionInfo = ApiService.getLatestApiVersion(authConfig)
+			if(latestVersionInfo.success) {
+				def currApiVersion = backupProviderModel.getConfigProperty('apiVersion')
+				if(currApiVersion != latestVersionInfo.apiVersion) {
+					log.debug("Updating Veeam API version to ${latestVersionInfo.apiVersion}.")
+					backupProviderModel.setConfigProperty('apiVersion', latestVersionInfo.apiVersion)
+					morpheus.async.backupProvider.bulkSave([backupProviderModel]).blockingGet()
+				}
+				rtn.success = true
+			}
+		} catch(e) {
+			log.error("updateApiVersion error: ${e}", e)
+		}
 	}
 }

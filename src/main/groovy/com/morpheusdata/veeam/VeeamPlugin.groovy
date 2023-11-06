@@ -15,6 +15,7 @@
 */
 package com.morpheusdata.veeam
 
+import com.morpheusdata.core.MorpheusContext
 import com.morpheusdata.core.Plugin
 
 class VeeamPlugin extends Plugin {
@@ -42,4 +43,8 @@ class VeeamPlugin extends Plugin {
 	    ]
 	    morpheus.services.seed.reinstallSeedData(seedsToRun) // needs to be synchronous to prevent seeds from running during plugin install
     }
+
+	MorpheusContext getMorpheusContext() {
+		this.morpheus
+	}
 }
