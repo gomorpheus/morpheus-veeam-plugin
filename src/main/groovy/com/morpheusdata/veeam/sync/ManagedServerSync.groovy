@@ -2,6 +2,7 @@ package com.morpheusdata.veeam.sync
 
 import com.morpheusdata.core.MorpheusContext
 import com.morpheusdata.model.BackupProvider
+import com.morpheusdata.veeam.VeeamBackupProvider
 import com.morpheusdata.veeam.VeeamPlugin
 import com.morpheusdata.veeam.services.ApiService
 import groovy.util.logging.Slf4j

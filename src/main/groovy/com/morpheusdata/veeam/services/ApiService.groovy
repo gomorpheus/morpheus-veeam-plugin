@@ -195,7 +195,7 @@ class ApiService {
 					}
 					//paging
 					if(results.data.PagingInfo?.size() > 0 && results.data.PagingInfo['@PageNum']?.toInteger() < results.data.PagingInfo['@PagesCount']?.toInteger()) {
-						query.page = (results.data.PagingInfo['@PageNum']?.toInteger() + 1)
+						query.page = (results.data.PagingInfo['@PageNum']?.toInteger() + 1).toString()
 						keepGoing = true
 					} else {
 						keepGoing = false
@@ -504,48 +504,48 @@ class ApiService {
 //		return rtn
 //	}
 //
-//	static getBackupRepositories(Map authConfig, Map opts) {
-//		def rtn = [success:false, repositories:[]]
-//		def tokenResults = getToken(authConfig)
-//		if(tokenResults.success == true) {
-//			def apiPath = authConfig.basePath + '/repositories'
-//			def headers = buildHeaders([:], tokenResults.token)
-//			def page = opts.page ?: 1
-//			def perPage = opts.perPage ?: 50
-//			def query = [format:'Entity', pageSize:perPage, page:page]
+	static getBackupRepositories(Map authConfig) {
+		def rtn = [success:false, repositories:[]]
+		def tokenResults = getToken(authConfig)
+		if(tokenResults.success == true) {
+			def apiPath = authConfig.basePath + '/repositories'
+			def headers = buildHeaders([:], tokenResults.token)
+			def page = '1'
+			def perPage = '50'
+			def query = [format:'Entity', pageSize:perPage, page:page]
 //			if(opts.backupType)
 //				query.filter = 'Platform==' + opts.backupType
-//			def keepGoing = true
-//			while(keepGoing) {
-//				HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
-//				HttpApiClient httpApiClient = new HttpApiClient()
-//				def results = httpApiClient.callXmlApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'GET')
-//				if(results.success == true) {
-//					//iterate results
-//					results.data.Repository?.each { repository ->
-//						def row = xmlToMap(repository, true)
-//						row.externalId = row.uid
-//						rtn.repositories << row
-//					}
-//					//paging
-//					if(results.data.PagingInfo?.size() > 0 && results.data.PagingInfo['@PageNum']?.toInteger() < results.data.PagingInfo['@PagesCount']?.toInteger()) {
-//						query.page = (results.data.PagingInfo['@PageNum']?.toInteger() + 1)
-//						keepGoing = true
-//					} else {
-//						keepGoing = false
-//					}
-//				} else {
-//					keepGoing = false
-//				}
-//			}
-//			//no errors - good
-//			rtn.success = true
-//		} else {
-//			//return token errors?
-//
-//		}
-//		return rtn
-//	}
+			def keepGoing = true
+			while(keepGoing) {
+				HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
+				HttpApiClient httpApiClient = new HttpApiClient()
+				def results = httpApiClient.callXmlApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'GET')
+				if(results.success == true) {
+					//iterate results
+					results.data.Repository?.each { repository ->
+						def row = xmlToMap(repository, true)
+						row.externalId = row.uid
+						rtn.repositories << row
+					}
+					//paging
+					if(results.data.PagingInfo?.size() > 0 && results.data.PagingInfo['@PageNum']?.toInteger() < results.data.PagingInfo['@PagesCount']?.toInteger()) {
+						query.page = (results.data.PagingInfo['@PageNum']?.toInteger() + 1).toString()
+						keepGoing = true
+					} else {
+						keepGoing = false
+					}
+				} else {
+					keepGoing = false
+				}
+			}
+			//no errors - good
+			rtn.success = true
+		} else {
+			//return token errors?
+
+		}
+		return rtn
+	}
 //
 //	static getBackupRepositories(url, token){
 //		log.debug "getBackupRepositories"

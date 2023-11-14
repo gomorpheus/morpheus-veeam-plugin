@@ -6,6 +6,7 @@ import com.morpheusdata.core.util.SyncTask
 import com.morpheusdata.model.Backup
 import com.morpheusdata.model.BackupJob
 import com.morpheusdata.model.BackupProvider
+import com.morpheusdata.veeam.VeeamBackupProvider
 import com.morpheusdata.veeam.VeeamPlugin
 import com.morpheusdata.veeam.services.ApiService
 import com.morpheusdata.model.projection.BackupJobIdentityProjection
@@ -62,7 +63,6 @@ class BackupJobSync {
 		def adds = []
 		def objCategory = "veeam.job.${backupProviderModel.id}"
 		for(cloudItem in itemsToAdd) {
-			println "BOBW : BackupJobSync.groovy:65 : cloudItem : ${cloudItem}"
 			def addConfig = [account       : backupProviderModel.account, backupProvider: backupProviderModel, code: objCategory + '.' + cloudItem.uid,
 			                 category      : objCategory, name: cloudItem.name, externalId: cloudItem.externalId,
 			                 source        : 'veeam', enabled: (cloudItem.scheduleEnabled == 'true'), platform: (cloudItem.platform?.toLowerCase() ?: 'all'),
