@@ -166,53 +166,55 @@ class ApiService {
 		return rtn
 	}
 
-	// BEGIN PORT FROM MORPHEUS CODE BASE - INCLUDE AS NEEDED
-//	//new list
-//	static listBackupJobs(Map authConfig, Map opts) {
-//		def rtn = [success:false, jobs:[]]
-//		def tokenResults = getToken(authConfig)
-//		if(tokenResults.success == true) {
-//			def apiPath = authConfig.basePath + '/jobs'
-//			def headers = buildHeaders([:], tokenResults.token)
-//			def page = opts.page ?: 1
-//			def perPage = opts.perPage ?: 50
-//			def query = [format:'Entity', pageSize:perPage, page:page]
+	static listBackupJobs(Map authConfig) {
+		log.debug "listBackupJobs: ${authConfig}"
+		def rtn = [success:false, jobs:[]]
+		def tokenResults = getToken(authConfig)
+		if(tokenResults.success == true) {
+			def apiPath = authConfig.basePath + '/jobs'
+			def headers = buildHeaders([:], tokenResults.token)
+			def page = '1'
+			def perPage = '50'
+			def query = [format:'Entity', pageSize:perPage, page:page]
 //			if(opts.backupType)
 //				query.filter = 'Platform==' + opts.backupType
-//			def keepGoing = true
-//			while(keepGoing) {
-//				HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
-//				HttpApiClient httpApiClient = new HttpApiClient()
-//				def results = httpApiClient.callXmlApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'GET')
-//				// log.debug("List Backup Jobs result: ${results}")
-//				if(results.success == true) {
-//					//iterate results
-//					results.data.Job?.each { job ->
-//						def row = xmlToMap(job, true)
-//						row.externalId = row.uid
-//						row.scheduleCron = decodeScheduling(job)
-//
-//						rtn.jobs << row
-//					}
-//					//paging
-//					if(results.data.PagingInfo?.size() > 0 && results.data.PagingInfo['@PageNum']?.toInteger() < results.data.PagingInfo['@PagesCount']?.toInteger()) {
-//						query.page = (results.data.PagingInfo['@PageNum']?.toInteger() + 1)
-//						keepGoing = true
-//					} else {
-//						keepGoing = false
-//					}
-//				} else {
-//					keepGoing = false
-//				}
-//			}
-//			//no errors - good
-//			rtn.success = true
-//		} else {
-//			//return token errors?
-//
-//		}
-//		return rtn
-//	}
+			def keepGoing = true
+			while(keepGoing) {
+				HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams:query)
+				HttpApiClient httpApiClient = new HttpApiClient()
+				def results = httpApiClient.callXmlApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'GET')
+				// log.debug("List Backup Jobs result: ${results}")
+				if(results.success == true) {
+					//iterate results
+					results.data.Job?.each { job ->
+						def row = xmlToMap(job, true)
+						row.externalId = row.uid
+						row.scheduleCron = decodeScheduling(job)
+
+						rtn.jobs << row
+					}
+					//paging
+					if(results.data.PagingInfo?.size() > 0 && results.data.PagingInfo['@PageNum']?.toInteger() < results.data.PagingInfo['@PagesCount']?.toInteger()) {
+						query.page = (results.data.PagingInfo['@PageNum']?.toInteger() + 1)
+						keepGoing = true
+					} else {
+						keepGoing = false
+					}
+				} else {
+					keepGoing = false
+				}
+			}
+			//no errors - good
+			rtn.success = true
+		} else {
+			//return token errors?
+
+		}
+		return rtn
+	}
+
+	// BEGIN PORT FROM MORPHEUS CODE BASE - INCLUDE AS NEEDED
+//	//new list
 //
 //	static listHierarchyRoots(Map authConfig, Map opts) {
 //		def rtn = [success:false, hierarchyRoots:[]]
@@ -225,7 +227,7 @@ class ApiService {
 //			def query = [format:'Entity', pageSize:perPage, page:page]
 //			def keepGoing = true
 //			while(keepGoing) {
-//				HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//				HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //				HttpApiClient httpApiClient = new HttpApiClient()
 //				def results = httpApiClient.callXmlApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'GET')
 //				if(results.success == true) {
@@ -265,7 +267,7 @@ class ApiService {
 //				query.filter = 'managedServerType==' + opts.managedServerType
 //			def keepGoing = true
 //			while(keepGoing) {
-//				HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//				HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //				HttpApiClient httpApiClient = new HttpApiClient()
 //				def results = httpApiClient.callXmlApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'GET')
 //				if(results.success == true) {
@@ -300,7 +302,7 @@ class ApiService {
 //			def headers = buildHeaders([:], tokenResults.token)
 //			def query = [type: 'HierarchyRoot', filter: "Name==\"${name}\"", format:"Entities", pageSize:1]
 //			HttpApiClient httpApiClient = new HttpApiClient()
-//			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //			def results = httpApiClient.callXmlApi(authConfig.apiUrl, "/api/query", null, null, requestOpts, 'GET')
 //			rtn.success = results.success
 //			if(rtn.success) {
@@ -345,7 +347,7 @@ class ApiService {
 //				query.filter = 'managedServerType==' + opts.managedServerType
 //			def keepGoing = true
 //			while(keepGoing) {
-//				HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//				HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //				HttpApiClient httpApiClient = new HttpApiClient()
 //				def results = httpApiClient.callXmlApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'GET')
 //				if(results.success == true) {
@@ -386,7 +388,7 @@ class ApiService {
 //			def query = [format:'Entity', pageSize:perPage, page:page]
 //			def keepGoing = true
 //			while(keepGoing) {
-//				HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//				HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //				HttpApiClient httpApiClient = new HttpApiClient()
 //				def results = httpApiClient.callXmlApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'GET')
 //				results.data.ObjectInJob.each { objectInJob ->
@@ -417,7 +419,7 @@ class ApiService {
 //			def apiPath = authConfig.basePath + '/jobs/' + jobId
 //			def headers = buildHeaders([:], tokenResults.token)
 //			def query = [format:'Entity']
-//			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //			HttpApiClient httpApiClient = new HttpApiClient()
 //			def results = httpApiClient.callXmlApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'GET)
 //			if(results.success == true) {
@@ -443,7 +445,7 @@ class ApiService {
 //			query.filter = "managedServerType==${managedServerType}"
 //		}
 //		HttpApiClient httpApiClient = new HttpApiClient()
-//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //		def results = httpApiClient.callXmlApi(url, "/api/query", null, null, requestOpts, 'GET')
 //		log.debug("got: ${results}")
 //		rtn.success = results?.success
@@ -515,7 +517,7 @@ class ApiService {
 //				query.filter = 'Platform==' + opts.backupType
 //			def keepGoing = true
 //			while(keepGoing) {
-//				HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//				HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //				HttpApiClient httpApiClient = new HttpApiClient()
 //				def results = httpApiClient.callXmlApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'GET')
 //				if(results.success == true) {
@@ -578,7 +580,7 @@ class ApiService {
 //		def headers = buildHeaders([:], token)
 //		def query = [type: 'job', filter:"name==\"${backupJobName}\"", format:'entities', pageSize:1]
 //		HttpApiClient httpApiClient = new HttpApiClient()
-//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //		def results = httpApiClient.callXmlApi(url, "/api/query", null, null, requestOpts, 'GET')
 //		log.debug("got: ${results}")
 //		rtn.success = results?.success
@@ -596,7 +598,7 @@ class ApiService {
 //		def headers = buildHeaders([:], token)
 //		def query = [type: 'repository', filter: "name==\"${repositoryName}\"", format:"entities", pageSize:1]
 //		HttpApiClient httpApiClient = new HttpApiClient()
-//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //		def results = httpApiClient.callXmlApi(url, "/api/query", null, null, requestOpts, 'GET')
 //		log.debug("got: ${results}")
 //		rtn.success = results?.success
@@ -613,7 +615,7 @@ class ApiService {
 //		def headers = buildHeaders([:], token)
 //		def query = [format: "Entity"]
 //		HttpApiClient httpApiClient = new HttpApiClient()
-//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //		def results = httpApiClient.callXmlApi(url, "/api/jobs/${backupJobId}", null, null, requestOpts, 'GET')
 //		rtn.results = results
 //		log.debug("got: ${results}")
@@ -633,7 +635,7 @@ class ApiService {
 //		def headers = buildHeaders([:], token)
 //		def query = [format: "Entity"]
 //		HttpApiClient httpApiClient = new HttpApiClient()
-//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //		def results = httpApiClient.callXmlApi(url, "/api/jobs", null, null, requestOpts, 'GET')
 //		rtn.success = results?.success
 //		rtn.content = new groovy.util.XmlSlurper().parseText(results.content)
@@ -644,7 +646,7 @@ class ApiService {
 //		def rtn = [success:false]
 //		def headers = buildHeaders([:], token)
 //		def query = [format:'Entity']
-//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //		HttpApiClient httpApiClient = new HttpApiClient()
 //		def results = httpApiClient.callXmlApi(url, "/api/jobs/${backupJobId}/includes", null, null, requestOpts, 'GET')
 //		rtn.taskId = results.data.taskId
@@ -680,7 +682,7 @@ class ApiService {
 //					}
 //				}
 //			}
-//			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query, body:requestXml.toString())
+//			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query, body:requestXml.toString())
 //			HttpApiClient httpApiClient = new HttpApiClient()
 //			log.debug("requestOpts: ${requestOpts}")
 //			def results = httpApiClient.callXmlApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'POST')
@@ -772,7 +774,7 @@ class ApiService {
 //			def headers = buildHeaders([:], tokenResults.token)
 //
 //			def query = [type:'hierarchyRoot', filter:"name==\"${name}\""]
-//			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //			HttpApiClient httpApiClient = new HttpApiClient()
 //			def results = httpApiClient.callXmlApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'GET')
 //			//check results
@@ -799,7 +801,7 @@ class ApiService {
 //			query.filter = "Platform==${backupType}"
 //		}
 //		HttpApiClient httpApiClient = new HttpApiClient()
-//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //		def results = httpApiClient.callXmlApi(url, "/api/query", null, null, requestOpts, 'GET')
 //		rtn.success = results?.success && !results?.errorCode
 //		def jobs = []
@@ -817,7 +819,7 @@ class ApiService {
 //			while(response.PagingInfo?.size() > 0 && response.PagingInfo['@PageNum']?.toInteger() < response.PagingInfo['@PagesCount']?.toInteger()) {
 //				def nextPage = response.PagingInfo['@PageNum']?.toInteger() + 1
 //				query.page = nextPage
-//				requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//				requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //				results = httpApiClient.callXmlApi(url, "/api/query", null, null, requestOpts, 'GET')
 //				if(results?.success) {
 //					response = new groovy.util.XmlSlurper().parseText(results.content)
@@ -869,7 +871,7 @@ class ApiService {
 //			def apiPath = authConfig.basePath + '/jobs/' + jobId + '/includes'
 //			def headers = buildHeaders([:], tokenResults.token)
 //			def query = [format:'Entity']
-//			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //			HttpApiClient httpApiClient = new HttpApiClient()
 //			//need managed servers
 //			def findResults = waitForVm(authConfig, opts.externalId, managedServers, opts)
@@ -902,7 +904,7 @@ class ApiService {
 //					}
 //					//add it
 //					log.debug("requestOpts: ${requestOpts}")
-//					requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query, body: requestXml.toString())
+//					requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query, body: requestXml.toString())
 //					def addResults = httpApiClient.callXmlApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'POST')
 //					log.debug("addResults: ${addResults}")
 //					if(addResults.success == true) {
@@ -1018,7 +1020,7 @@ class ApiService {
 //		//clone
 //		def query = [action:'clone']
 //		HttpApiClient httpApiClient = new HttpApiClient()
-//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query, body: body)
+//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query, body: body)
 //		def results = httpApiClient.callXmlApi(url, "/api/jobs/${backupJobIdToClone}", null, null, requestOpts, 'POST')
 //		log.debug("got: ${results}")
 //		rtn.success = results?.success
@@ -1077,7 +1079,7 @@ class ApiService {
 //			def apiPath = authConfig.basePath + '/jobs/' + jobId
 //			def headers = buildHeaders([:], tokenResults.token)
 //			def query = [action:'start']
-//			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //			HttpApiClient httpApiClient = new HttpApiClient()
 //			def results = httpApiClient.callXmlApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'POST')
 //			log.debug("veeam backup start request got: ${results}")
@@ -1120,7 +1122,7 @@ class ApiService {
 //		def headers = buildHeaders([:], token)
 //		def query = [action:'stop']
 //		HttpApiClient httpApiClient = new HttpApiClient()
-//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //		def results = httpApiClient.callXmlApi(url, "/api/jobs/${backupJobId}", null, null, requestOpts, 'POST')
 //		log.debug("got: ${results}")
 //		rtn.success = results?.success
@@ -1146,7 +1148,7 @@ class ApiService {
 //				}
 //			}
 //			def body = bodyXml.toString()
-//			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query, body: body)
+//			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query, body: body)
 //			HttpApiClient httpApiClient = new HttpApiClient()
 //			def results = httpApiClient.callXmlApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'POST')
 //			log.debug("veeam quick backup start request got: ${results}")
@@ -1202,7 +1204,7 @@ class ApiService {
 //				}
 //			}
 //			def body = bodyXml.toString()
-//			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query, body: body)
+//			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query, body: body)
 //			HttpApiClient httpApiClient = new HttpApiClient()
 //			def results = httpApiClient.callXmlApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'POST')
 //			log.debug("veeamzip backup start request got: ${results}")
@@ -1280,7 +1282,7 @@ class ApiService {
 //		def query = [format: "Entity"]
 //		def body = new StreamingMarkupBuilder().bindNode(bodyXmlBuilder).toString()
 //		HttpApiClient httpApiClient = new HttpApiClient()
-//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query, body: body)
+//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query, body: body)
 //		def results = httpApiClient.callXmlApi(url, "/api/jobs/${backupJobId}", null, null, requestOpts, 'PUT')
 //		log.debug("disableBackupJobSchedule got: ${results}")
 //		rtn.success = results?.success
@@ -1304,7 +1306,7 @@ class ApiService {
 //		def headers = buildHeaders([:], token)
 //		def query = [action: "toggleScheduleEnabled"]
 //		HttpApiClient httpApiClient = new HttpApiClient()
-//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //		def results = httpApiClient.callXmlApi(url, "/api/jobs/${backupJobId}", null, null, requestOpts, 'POST')
 //		log.debug("got: ${results}")
 //		rtn.success = results?.success
@@ -1319,7 +1321,7 @@ class ApiService {
 //		def rtn = [success:false]
 //		def headers = buildHeaders([:], token)
 //		def query = [format:'Entity']
-//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //		HttpApiClient httpApiClient = new HttpApiClient()
 //		def apiPath = '/api/jobs/' + backupJobId + '/includes/' + vmId
 //		def results = httpApiClient.callXmlApi(url, apiPath, null, null, requestOpts, 'DELETE')
@@ -1337,7 +1339,7 @@ class ApiService {
 //		def query = [format: "Entity"]
 //		//get current VMs in job
 //		HttpApiClient httpApiClient = new HttpApiClient()
-//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //		def results = httpApiClient.callXmlApi(url, "/api/jobs/${backupJobId}/includes", null, null, requestOpts, 'GET')
 //		log.debug("got: ${results}")
 //		rtn.success = results?.success
@@ -1362,7 +1364,7 @@ class ApiService {
 //		def headers = buildHeaders([:], token)
 //		def query = [format: "Entity"]
 //		HttpApiClient httpApiClient = new HttpApiClient()
-//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //		def results = httpApiClient.callXmlApi(url, "/api/backupSessions/${backupSessionId}", null, null, requestOpts, 'GET')
 //		log.debug("got: ${results}")
 //		rtn.success = results?.success
@@ -1395,7 +1397,7 @@ class ApiService {
 //		def headers = buildHeaders([:], token)
 //		def query = [type:'backupJobSession', filter:"jobUid==\"${backupJobUid}\"", format:'entities']
 //		HttpApiClient httpApiClient = new HttpApiClient()
-//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //		def results = httpApiClient.callXmlApi(url, "/api/query", null, null, requestOpts, 'GET')
 //		log.debug("got: ${results}")
 //		rtn.success = results?.success
@@ -1439,7 +1441,7 @@ class ApiService {
 //				queryFilter += ";CreationTime>=\"${opts.startRefDateStr}\""
 //			}
 //			def query = [type: 'backupJobSession', filter: queryFilter, format: 'entities', sortDesc: 'CreationTime', pageSize: 1 ]
-//			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers: headers, query: query)
+//			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers: headers, queryParams: query)
 //			HttpApiClient httpApiClient = new HttpApiClient()
 //			log.info("getLastBackupResult query: ${query}")
 //			def attempt = 0
@@ -1501,7 +1503,7 @@ class ApiService {
 //			def keepGoing = true
 //			while(keepGoing == true && attempt < maxTaskAttempts) {
 //				HttpApiClient httpApiClient = new HttpApiClient()
-//				HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//				HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //				def restorePointsResults = httpApiClient.callXmlApi(authConfig.apiUrl, "/api/query", null, null, requestOpts, 'GET')
 //				if(restorePointsResults.success) {
 //					def restorePointsResponse = new groovy.util.XmlSlurper().parseText(restorePointsResults.content)
@@ -1529,7 +1531,7 @@ class ApiService {
 //		def headers = buildHeaders([:], token)
 //		def query = [format: "Entity"]
 //		HttpApiClient httpApiClient = new HttpApiClient()
-//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //		def results = httpApiClient.callXmlApi(url, "/api/restoreSessions/${restoreSessionId}", null, null, requestOpts, 'GET')
 //		log.debug("got: ${results}")
 //		rtn.success = results?.success
@@ -1558,7 +1560,7 @@ class ApiService {
 //		def headers = buildHeaders([:], token)
 //		def query = [format: "Entity"]
 //		HttpApiClient httpApiClient = new HttpApiClient()
-//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //		def results = httpApiClient.callXmlApi(url, "/api/backupSessions/${backupJobSessionId}/taskSessions", null, null, requestOpts, 'GET')
 //		log.debug("got: ${results}")
 //		rtn.success = results?.success
@@ -1603,7 +1605,7 @@ class ApiService {
 //			def restoreType = opts.restoreType
 //			def uri = new URI(opts.restoreHref)
 //			HttpApiClient httpApiClient = new HttpApiClient()
-//			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //			def results = httpApiClient.callXmlApi(url, uri.path, null, null, requestOpts, 'GET')
 //			log.debug("got: ${results}")
 //			rtn.success = results?.success
@@ -1623,7 +1625,7 @@ class ApiService {
 //		if(!restoreLink && (opts.restorePointId || opts.restoreRef)) {
 //			def restorePointId = opts.restorePointId ?: opts.restoreRef
 //			HttpApiClient httpApiClient = new HttpApiClient()
-//			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //			def results = httpApiClient.callXmlApi(url, "/api/restorePoints/${restorePointId}/vmRestorePoints", null, null, requestOpts, 'GET')
 //			log.debug("got: ${results}")
 //			rtn.success = results?.success
@@ -1639,7 +1641,7 @@ class ApiService {
 //		}
 //		if(opts.vmRestorePointId || (opts.restorePointId && !restoreLink)) {
 //			HttpApiClient httpApiClient = new HttpApiClient()
-//			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //			def results = httpApiClient.callXmlApi(url, "/api/vmRestorePoints/${opts.vmRestorePointId ?: opts.restorePointId}", null, null, requestOpts, 'GET')
 //			log.debug("got: ${results}")
 //			rtn.success = results?.success
@@ -1657,7 +1659,7 @@ class ApiService {
 //		// we only have the backup session, find the restore resources
 //		if(!restoreLink) {
 //			HttpApiClient httpApiClient = new HttpApiClient()
-//			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //			def results = httpApiClient.callXmlApi(url, "/api/backupSessions/${backupSessionId}", null, null, requestOpts, 'GET')
 //			//find restore points
 //			def restorePointsLink
@@ -1685,7 +1687,7 @@ class ApiService {
 //				def restoreRefList = backupResults.data.refs?.ref?.links?.link?.find { it.type == "RestorePointReferenceList" }
 //				// get a list of restore points from the backup
 //				def refListLink = new URI(restoreRefList.href)
-//				requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//				requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //				def refListResults = httpApiClient.callXmlApi(url, null, null, refListLink.path,requestOpts, 'GET')
 //				rtn.success = refListResults?.success
 //				if(rtn.success == true) {
@@ -1702,7 +1704,7 @@ class ApiService {
 //
 //
 //			if(restorePointsLink) {
-//				requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//				requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //				def restoreLinkResults = httpApiClient.callXmlApi(url, "${restorePointsLink}", null, null, requestOpts, 'GET')
 //				log.debug("got: ${results}")
 //				rtn.success = results?.success
@@ -1821,7 +1823,7 @@ class ApiService {
 //			def headers = buildHeaders([:], token)
 //			def query = [host: hierarchyRoot, name: vmName, type: 'Vm']
 //			HttpApiClient httpApiClient = new HttpApiClient()
-//			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //			def results = httpApiClient.callXmlApi(url, "/api/lookup", null, null, requestOpts, 'GET')
 //			log.debug("got vmbyid results: ${results}")
 //			rtn.success = results?.success
@@ -1852,7 +1854,7 @@ class ApiService {
 //		def headers = buildHeaders([:], token)
 //		def query = [hierarchyRef: vmId]
 //		HttpApiClient httpApiClient = new HttpApiClient()
-//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //		def results = httpApiClient.callXmlApi(url, "/api/lookup", null, null, requestOpts, 'GET')
 //		log.debug("got: ${results}")
 //		rtn.success = results?.success
@@ -1929,7 +1931,7 @@ class ApiService {
 //		def headers = buildHeaders([:], token)
 //		def query = [format: "Entity"]
 //		HttpApiClient httpApiClient = new HttpApiClient()
-//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //		def results = httpApiClient.callXmlApi(url, "/api/jobs/${backupJobId}", null, null, requestOpts, 'GET')
 //		log.debug("got: ${results}")
 //		rtn.success = results?.success
@@ -1948,7 +1950,7 @@ class ApiService {
 //			body = new StreamingMarkupBuilder().bindNode(response).toString()
 //		}
 //		if(body) {
-//			requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query, body: body)
+//			requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query, body: body)
 //			results = httpApiClient.callXmlApi(url, "/api/jobs/${backupJobId}", null, null, requestOpts, 'PUT')
 //			log.debug("got: ${results}")
 //			rtn.success = results?.success
@@ -1964,7 +1966,7 @@ class ApiService {
 //		def query = [format: "Entity"]
 //		//get current VMs in job
 //		HttpApiClient httpApiClient = new HttpApiClient()
-//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //		def results =  httpApiClient.callXmlApi(url, "/api/jobs/${backupJobId}/includes", null, null, requestOpts, 'GET')
 //		log.debug("got: ${results}")
 //		rtn.success = results?.success
@@ -1995,7 +1997,7 @@ class ApiService {
 //				def taskId = response.TaskId.toString()
 //				if(taskId) {
 //					sleep(10000l) //wait for update to finish
-//					requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//					requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //					results = httpApiClient.callXmlApi(url, "/api/tasks/${taskId}", null, null, requestOpts, 'GET')
 //					log.debug("got: ${results}")
 //					rtn.success = results?.success
@@ -2038,7 +2040,7 @@ class ApiService {
 //		}
 //
 //		HttpApiClient httpApiClient = new HttpApiClient()
-//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //		rtn = httpApiClient.callXmlApi(apiUrl, apiPath, null, null, requestOpts, 'GET')
 //		log.debug("fetchQuery results: ${rtn}")
 //		if(rtn.success) {
@@ -2053,7 +2055,7 @@ class ApiService {
 //		def apiPath = authConfig.basePath + '/tasks/' + taskId
 //		def headers = buildHeaders([:], authConfig.token)
 //		def query = [format:'Entity']
-//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:query)
+//		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 //		HttpApiClient httpApiClient = new HttpApiClient()
 //		def attempt = 0
 //		def keepGoing = true
@@ -2124,88 +2126,88 @@ class ApiService {
 //		return rtn
 //	}
 //
-//	static dayOfWeekList = [
-//			[index:1, name:'Sunday'],
-//			[index:2, name:'Monday'],
-//			[index:3, name:'Tuesday'],
-//			[index:4, name:'Wednesday'],
-//			[index:5, name:'Thursday'],
-//			[index:6, name:'Friday'],
-//			[index:7, name:'Saturday']
-//	]
-//
-//	static monthList = [
-//			[index:1, name:'January'],
-//			[index:2, name:'February'],
-//			[index:3, name:'March'],
-//			[index:4, name:'April'],
-//			[index:5, name:'May'],
-//			[index:6, name:'June'],
-//			[index:7, name:'July'],
-//			[index:8, name:'August'],
-//			[index:9, name:'September'],
-//			[index:10, name:'October'],
-//			[index:11, name:'November'],
-//			[index:12, name:'December']
-//	]
-//
-//	//scheduling
-//	static decodeScheduling(job) {
-//		def rtn
-//		//build a cron representation
-//		def scheduleSet = job.ScheduleConfigured
-//		def scheduleOn = job.ScheduleEnabled
-//		def optionsDaily = job.JobScheduleOptions?.OptionsDaily
-//		def optionsMonthly = job.JobScheduleOptions?.OptionsMonthly
-//		def optionsPeriodically = job.JobScheduleOptions?.OptionsPeriodically
-//		//build cron off the type
-//		if(optionsDaily['@Enabled'] == 'true') {
-//			//get the hour offset
-//			def timeOffset = optionsDaily.TimeOffsetUtc?.toLong()
-//			def hour = ((int)(timeOffset.div(3600l)))
-//			def minute = ((int)((timeOffset - (hour * 3600l)).div(60)))
-//			//build the string
-//			rtn = '0 ' + minute + ' ' + hour
-//			//get the days of the week
-//			if(optionsDaily.Kind == 'Everyday') {
-//				rtn = rtn + ' 	* * ?'
-//			} else {
-//				def dayList = []
-//				dayOfWeekList?.each { day ->
-//					if(optionsDaily.Days.find{ it.toString() == day.name }) {
-//						dayList << day.index
-//					}
-//				}
-//				rtn = rtn + ' ? * ' + dayList.join(',')
-//			}
-//		} else if(optionsMonthly['@Enabled'] == 'true') {
-//			def timeOffset = optionsMonthly.TimeOffsetUtc?.toLong()
-//			def hour = ((int)(timeOffset.div(3600l)))
-//			def minute = ((int)((timeOffset - (hour * 3600l)).div(60)))
-//			def day = optionsMonthly.DayOfMonth
-//			//cron can't handle the other style - fourth saturday of month
-//			//build the string
-//			rtn = '0 ' + minute + ' ' + hour + ' ' + day
-//			//get the days of the month
-//			def months = []
-//			monthList?.each { month ->
-//				if(optionsMonthly.Months.find { it.toString() == month.name })
-//					months << month.index
-//			}
-//			if(months?.size() == 12) {
-//				rtn = rtn + ' ' + '*'
-//			} else {
-//				rtn = rtn + ' ' + months.join(',')
-//			}
-//			rtn + ' ?'
-//		} else if(optionsPeriodically['@Enabled']== 'true') {
-//			//add continuously support
-//			def hour = optionsPeriodically.FullPeriod
-//			//build the string
-//			rtn = '0 0 ' + hour + ' * * ?'
-//		}
-//		return rtn
-//	}
+	static dayOfWeekList = [
+			[index:1, name:'Sunday'],
+			[index:2, name:'Monday'],
+			[index:3, name:'Tuesday'],
+			[index:4, name:'Wednesday'],
+			[index:5, name:'Thursday'],
+			[index:6, name:'Friday'],
+			[index:7, name:'Saturday']
+	]
+
+	static monthList = [
+			[index:1, name:'January'],
+			[index:2, name:'February'],
+			[index:3, name:'March'],
+			[index:4, name:'April'],
+			[index:5, name:'May'],
+			[index:6, name:'June'],
+			[index:7, name:'July'],
+			[index:8, name:'August'],
+			[index:9, name:'September'],
+			[index:10, name:'October'],
+			[index:11, name:'November'],
+			[index:12, name:'December']
+	]
+
+	//scheduling
+	static decodeScheduling(job) {
+		def rtn
+		//build a cron representation
+		def scheduleSet = job.ScheduleConfigured
+		def scheduleOn = job.ScheduleEnabled
+		def optionsDaily = job.JobScheduleOptions?.OptionsDaily
+		def optionsMonthly = job.JobScheduleOptions?.OptionsMonthly
+		def optionsPeriodically = job.JobScheduleOptions?.OptionsPeriodically
+		//build cron off the type
+		if(optionsDaily['@Enabled'] == 'true') {
+			//get the hour offset
+			def timeOffset = optionsDaily.TimeOffsetUtc?.toLong()
+			def hour = ((int)(timeOffset.div(3600l)))
+			def minute = ((int)((timeOffset - (hour * 3600l)).div(60)))
+			//build the string
+			rtn = '0 ' + minute + ' ' + hour
+			//get the days of the week
+			if(optionsDaily.Kind == 'Everyday') {
+				rtn = rtn + ' 	* * ?'
+			} else {
+				def dayList = []
+				dayOfWeekList?.each { day ->
+					if(optionsDaily.Days.find{ it.toString() == day.name }) {
+						dayList << day.index
+					}
+				}
+				rtn = rtn + ' ? * ' + dayList.join(',')
+			}
+		} else if(optionsMonthly['@Enabled'] == 'true') {
+			def timeOffset = optionsMonthly.TimeOffsetUtc?.toLong()
+			def hour = ((int)(timeOffset.div(3600l)))
+			def minute = ((int)((timeOffset - (hour * 3600l)).div(60)))
+			def day = optionsMonthly.DayOfMonth
+			//cron can't handle the other style - fourth saturday of month
+			//build the string
+			rtn = '0 ' + minute + ' ' + hour + ' ' + day
+			//get the days of the month
+			def months = []
+			monthList?.each { month ->
+				if(optionsMonthly.Months.find { it.toString() == month.name })
+					months << month.index
+			}
+			if(months?.size() == 12) {
+				rtn = rtn + ' ' + '*'
+			} else {
+				rtn = rtn + ' ' + months.join(',')
+			}
+			rtn + ' ?'
+		} else if(optionsPeriodically['@Enabled']== 'true') {
+			//add continuously support
+			def hour = optionsPeriodically.FullPeriod
+			//build the string
+			rtn = '0 0 ' + hour + ' * * ?'
+		}
+		return rtn
+	}
 //
 //	//api access
 //	static parseEntityId(String href) {
@@ -2221,20 +2223,20 @@ class ApiService {
 //		return rtn
 //	}
 //
-//	static extractVeeamUuid(String url) {
-//		def rtn = url
-//		def lastSlash = rtn?.lastIndexOf('/')
-//		if(lastSlash > -1)
-//			rtn = rtn.substring(lastSlash + 1)
-//		def lastQuestion = rtn?.lastIndexOf('?')
-//		if(lastQuestion > -1)
-//			rtn = rtn.substring(0, lastQuestion)
-//		def lastColon = rtn?.lastIndexOf(':')
-//		if(lastColon > -1)
-//			rtn = rtn.substring(lastColon + 1)
-//		return rtn
-//	}
-//
+	static extractVeeamUuid(String url) {
+		def rtn = url
+		def lastSlash = rtn?.lastIndexOf('/')
+		if(lastSlash > -1)
+			rtn = rtn.substring(lastSlash + 1)
+		def lastQuestion = rtn?.lastIndexOf('?')
+		if(lastQuestion > -1)
+			rtn = rtn.substring(0, lastQuestion)
+		def lastColon = rtn?.lastIndexOf(':')
+		if(lastColon > -1)
+			rtn = rtn.substring(lastColon + 1)
+		return rtn
+	}
+
 //	static extractMOR(String uuid) {
 //		def rtn = uuid
 //		def lastPeriod = rtn?.lastIndexOf('.')
@@ -2246,7 +2248,7 @@ class ApiService {
 //
 //		return rtn
 //	}
-//
+
 	static xmlToMap(String xml, Boolean camelCase = false) {
 		def rtn = xml ? xmlToMap(new groovy.util.XmlSlurper().parseText(xml), camelCase) : [:]
 	}

@@ -363,10 +363,10 @@ class VeeamBackupProvider extends AbstractBackupProvider {
 				if(testResults.success) {
 					morpheus.async.backupProvider.updateStatus(backupProviderModel, 'ok', null).subscribe().dispose()
 
-					new BackupJobSync(backupProviderModel, plugin).execute()
-					new BackupRepositorySync(backupProviderModel, plugin).execute()
-					new ManagedServerSync(backupProviderModel, plugin).execute()
-					new BackupServerSync(backupProviderModel, plugin).execute()
+					new BackupJobSync(backupProviderModel, apiService, plugin).execute()
+					new BackupRepositorySync(backupProviderModel, apiService, plugin).execute()
+					new ManagedServerSync(backupProviderModel, apiService, plugin).execute()
+					new BackupServerSync(backupProviderModel, apiService, plugin).execute()
 
 					updateApiVersion(backupProviderModel)
 					rtn.success = true
