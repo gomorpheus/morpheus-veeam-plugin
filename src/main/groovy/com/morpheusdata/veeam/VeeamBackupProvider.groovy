@@ -6,15 +6,19 @@ import com.morpheusdata.core.backup.AbstractBackupProvider
 import com.morpheusdata.core.backup.BackupJobProvider
 import com.morpheusdata.core.backup.BackupTypeProvider
 import com.morpheusdata.core.backup.DefaultBackupJobProvider
+import com.morpheusdata.core.data.DataFilter
+import com.morpheusdata.core.data.DataQuery
 import com.morpheusdata.core.util.ConnectionUtils
 import com.morpheusdata.model.BackupProvider as BackupProviderModel
 import com.morpheusdata.model.Icon
 import com.morpheusdata.model.OptionType
+import com.morpheusdata.model.ReferenceData
 import com.morpheusdata.response.ServiceResponse
 import com.morpheusdata.veeam.services.ApiService
 import com.morpheusdata.veeam.sync.*
 import groovy.json.JsonOutput
 import groovy.util.logging.Slf4j
+import io.reactivex.rxjava3.core.Observable
 
 @Slf4j
 class VeeamBackupProvider extends AbstractBackupProvider {
@@ -410,10 +414,16 @@ class VeeamBackupProvider extends AbstractBackupProvider {
 	def clearManagedServers(BackupProviderModel backupProvider, Map opts=[:]) {
 		def rtn = [success: true]
 		try {
-			// TODO
+			def objCategory = "veeam.backup.managedServer.${backupProvider.id}"
+			getMorpheus().async.referenceData.list(new DataQuery().withFilters([
+					new DataFilter('category', objCategory),
+					new DataFilter('account.id', backupProvider.account.id)
+			])).blockingSubscribe {
+				getMorpheus().async.referenceData.bulkRemove([it]).blockingGet()
+			}
 		} catch (Exception e) {
-			log.error("Error removing managed servers for backup provider {}[{}]", backupProvider.name, backupProvider.id)
-			rtn.msg = "Error removing managed servers: ${e}"
+			log.error "Error removing managed servers for backup provider ${backupProvider.name}[${backupProvider.id}]", e
+			rtn.msg = "Error removing managed servers: ${e}".toString()
 			rtn.success = false
 		}
 		return rtn
@@ -423,10 +433,16 @@ class VeeamBackupProvider extends AbstractBackupProvider {
 	def clearBackupServers(BackupProviderModel backupProvider, Map opts=[:]) {
 		def rtn = [success: true]
 		try {
-			// TODO
+			def objCategory = "veeam.backup.backupServer.${backupProvider.id}"
+			getMorpheus().async.referenceData.list(new DataQuery().withFilters([
+					new DataFilter('category', objCategory),
+					new DataFilter('account.id', backupProvider.account.id)
+			])).blockingSubscribe {
+				getMorpheus().async.referenceData.bulkRemove([it]).blockingGet()
+			}
 		} catch (Exception e) {
-			log.error("Error removing backup servers for backup provider {}[{}]", backupProvider.name, backupProvider.id)
-			rtn.msg = "Error removing backup servers: ${e}"
+			log.error "Error removing backup servers for backup provider ${backupProvider.name}[${backupProvider.id}]", e
+			rtn.msg = "Error removing backup servers: ${e}".toString()
 			rtn.success = false
 		}
 		return rtn
