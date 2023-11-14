@@ -254,85 +254,85 @@ class ApiService {
 //		return rtn
 //	}
 //
-//	static listManagedServers(Map authConfig, Map opts) {
-//		def rtn = [success:false, managedServers:[]]
-//		def tokenResults = getToken(authConfig)
-//		if(tokenResults.success == true) {
-//			def apiPath = authConfig.basePath + '/managedServers'
-//			def headers = buildHeaders([:], tokenResults.token)
-//			def page = opts.page ?: 1
-//			def perPage = opts.perPage ?: 50
-//			def query = [format:'Entity', pageSize:perPage, page:page]
+	static listManagedServers(Map authConfig) {
+		def rtn = [success:false, managedServers:[]]
+		def tokenResults = getToken(authConfig)
+		if(tokenResults.success == true) {
+			def apiPath = authConfig.basePath + '/managedServers'
+			def headers = buildHeaders([:], tokenResults.token)
+			def page = '1'
+			def perPage = '50'
+			def query = [format:'Entity', pageSize:perPage, page:page]
 //			if(opts.managedServerType)
 //				query.filter = 'managedServerType==' + opts.managedServerType
-//			def keepGoing = true
-//			while(keepGoing) {
-//				HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
-//				HttpApiClient httpApiClient = new HttpApiClient()
-//				def results = httpApiClient.callXmlApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'GET')
-//				if(results.success == true) {
-//					results.data.ManagedServer?.each { managedServer ->
-//						def row = xmlToMap(managedServer, true)
-//						row.externalId = row.uid
-//						rtn.managedServers << row
-//					}
-//					//paging
-//					if(results.data.PagingInfo?.size() > 0 && results.data.PagingInfo['@PageNum']?.toInteger() < results.data.PagingInfo['@PagesCount']?.toInteger()) {
-//						query.page = (results.data.PagingInfo['@PageNum']?.toInteger() + 1)
-//						keepGoing = true
-//					} else {
-//						keepGoing = false
-//					}
-//				} else {
-//					keepGoing = false
-//				}
-//			}
-//			//no errors - good
-//			rtn.success = true
-//		} else {
-//			//return token errors?
-//		}
-//		return rtn
-//	}
+			def keepGoing = true
+			while(keepGoing) {
+				HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
+				HttpApiClient httpApiClient = new HttpApiClient()
+				def results = httpApiClient.callXmlApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'GET')
+				if(results.success == true) {
+					results.data.ManagedServer?.each { managedServer ->
+						def row = xmlToMap(managedServer, true)
+						row.externalId = row.uid
+						rtn.managedServers << row
+					}
+					//paging
+					if(results.data.PagingInfo?.size() > 0 && results.data.PagingInfo['@PageNum']?.toInteger() < results.data.PagingInfo['@PagesCount']?.toInteger()) {
+						query.page = (results.data.PagingInfo['@PageNum']?.toInteger() + 1).toString()
+						keepGoing = true
+					} else {
+						keepGoing = false
+					}
+				} else {
+					keepGoing = false
+				}
+			}
+			//no errors - good
+			rtn.success = true
+		} else {
+			//return token errors?
+		}
+		return rtn
+	}
 //
-//	static getManagedServerRoot(Map authConfig, String name, Map opts) {
-//		def rtn = [success:false]
-//		try {
-//			def tokenResults = getToken(authConfig)
-//			def headers = buildHeaders([:], tokenResults.token)
-//			def query = [type: 'HierarchyRoot', filter: "Name==\"${name}\"", format:"Entities", pageSize:1]
-//			HttpApiClient httpApiClient = new HttpApiClient()
-//			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
-//			def results = httpApiClient.callXmlApi(authConfig.apiUrl, "/api/query", null, null, requestOpts, 'GET')
-//			rtn.success = results.success
-//			if(rtn.success) {
-//				def hRoot = results.data.Entities.HierarchyRoots.HierarchyRoot.getAt(0)
-//				if(hRoot) {
-//					rtn.data = [
-//							id: hRoot.HierarchyRootId.toString(),
-//							uid: hRoot["@UID"].toString(),
-//							uniqueId: hRoot.UniqueId.toString(),
-//							name: hRoot["@Name"].toString(),
-//							hostType: hRoot.HostType.toString(),
-//							links: []
-//					]
-//					hRoot.Links.Link.each {
-//						rtn.data.links << [
-//								name:it["@Name"].toString(),
-//								type:it["@Type"].toString(),
-//								rel:it["@Rel"].toString(),
-//								href: it["@Href"].toString()
-//						]
-//					}
-//				}
-//			}
-//			log.debug("managed server root query results: ${rtn}")
-//		} catch(Exception e) {
-//			log.error("getManagedServerRoot error: ${e}", e)
-//		}
-//
-//		return rtn
-//	}
+	static getManagedServerRoot(Map authConfig, String name) {
+		def rtn = [success:false]
+		try {
+			def tokenResults = getToken(authConfig)
+			def headers = buildHeaders([:], tokenResults.token)
+			def query = [type: 'HierarchyRoot', filter: "Name==\"${name}\"", format:"Entities", pageSize:'1']
+			HttpApiClient httpApiClient = new HttpApiClient()
+			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
+			def results = httpApiClient.callXmlApi(authConfig.apiUrl, "/api/query", null, null, requestOpts, 'GET')
+			rtn.success = results.success
+			if(rtn.success) {
+				def hRoot = results.data.Entities.HierarchyRoots.HierarchyRoot.getAt(0)
+				if(hRoot) {
+					rtn.data = [
+							id: hRoot.HierarchyRootId.toString(),
+							uid: hRoot["@UID"].toString(),
+							uniqueId: hRoot.UniqueId.toString(),
+							name: hRoot["@Name"].toString(),
+							hostType: hRoot.HostType.toString(),
+							links: []
+					]
+					hRoot.Links.Link.each {
+						rtn.data.links << [
+								name:it["@Name"].toString(),
+								type:it["@Type"].toString(),
+								rel:it["@Rel"].toString(),
+								href: it["@Href"].toString()
+						]
+					}
+				}
+			}
+			log.debug("managed server root query results: ${rtn}")
+		} catch(Exception e) {
+			log.error("getManagedServerRoot error: ${e}", e)
+		}
+
+		return rtn
+	}
 
 	static listBackupServers(Map authConfig) {
 		def rtn = [success:false, backupServers:[]]
