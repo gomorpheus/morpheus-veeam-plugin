@@ -333,49 +333,49 @@ class ApiService {
 //
 //		return rtn
 //	}
-//
-//	static listBackupServers(Map authConfig, Map opts) {
-//		def rtn = [success:false, backupServers:[]]
-//		def tokenResults = getToken(authConfig)
-//		if(tokenResults.success == true) {
-//			def apiPath = authConfig.basePath + '/backupServers'
-//			def headers = buildHeaders([:], tokenResults.token)
-//			def page = opts.page ?: 1
-//			def perPage = opts.perPage ?: 50
-//			def query = [format:'Entity', pageSize:perPage, page:page]
+
+	static listBackupServers(Map authConfig) {
+		def rtn = [success:false, backupServers:[]]
+		def tokenResults = getToken(authConfig)
+		if(tokenResults.success == true) {
+			def apiPath = authConfig.basePath + '/backupServers'
+			def headers = buildHeaders([:], tokenResults.token)
+			def page = '1'
+			def perPage = '50'
+			def query = [format:'Entity', pageSize:perPage, page:page]
 //			if(opts.managedServerType)
 //				query.filter = 'managedServerType==' + opts.managedServerType
-//			def keepGoing = true
-//			while(keepGoing) {
-//				HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
-//				HttpApiClient httpApiClient = new HttpApiClient()
-//				def results = httpApiClient.callXmlApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'GET')
-//				if(results.success == true) {
-//					//iterate results
-//					results.data.BackupServer?.each { backupServer ->
-//						def row = xmlToMap(backupServer, true)
-//						row.externalId = row.uid
-//						rtn.backupServers << row
-//					}
-//					//paging
-//					if(results.data.PagingInfo?.size() > 0 && results.data.PagingInfo['@PageNum']?.toInteger() < results.data.PagingInfo['@PagesCount']?.toInteger()) {
-//						query.page = (results.data.PagingInfo['@PageNum']?.toInteger() + 1)
-//						keepGoing = true
-//					} else {
-//						keepGoing = false
-//					}
-//				} else {
-//					keepGoing = false
-//				}
-//			}
-//			//no errors - good
-//			rtn.success = true
-//		} else {
-//			//return token errors?
-//		}
-//
-//		return rtn
-//	}
+			def keepGoing = true
+			while(keepGoing) {
+				HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
+				HttpApiClient httpApiClient = new HttpApiClient()
+				def results = httpApiClient.callXmlApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'GET')
+				if(results.success == true) {
+					//iterate results
+					results.data.BackupServer?.each { backupServer ->
+						def row = xmlToMap(backupServer, true)
+						row.externalId = row.uid
+						rtn.backupServers << row
+					}
+					//paging
+					if(results.data.PagingInfo?.size() > 0 && results.data.PagingInfo['@PageNum']?.toInteger() < results.data.PagingInfo['@PagesCount']?.toInteger()) {
+						query.page = (results.data.PagingInfo['@PageNum']?.toInteger() + 1).toString()
+						keepGoing = true
+					} else {
+						keepGoing = false
+					}
+				} else {
+					keepGoing = false
+				}
+			}
+			//no errors - good
+			rtn.success = true
+		} else {
+			//return token errors?
+		}
+
+		return rtn
+	}
 //
 //	static listBackups(Map authConfig, jobId, Map opts) {
 //		def rtn = [success:false, backups:[]]
