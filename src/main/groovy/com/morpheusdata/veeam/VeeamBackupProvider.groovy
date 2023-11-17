@@ -4,7 +4,6 @@ import com.morpheusdata.core.MorpheusContext
 import com.morpheusdata.core.Plugin
 import com.morpheusdata.core.backup.AbstractBackupProvider
 import com.morpheusdata.core.backup.BackupJobProvider
-import com.morpheusdata.core.backup.BackupTypeProvider
 import com.morpheusdata.core.backup.DefaultBackupJobProvider
 import com.morpheusdata.core.data.DataFilter
 import com.morpheusdata.core.data.DataQuery
@@ -12,7 +11,6 @@ import com.morpheusdata.core.util.ConnectionUtils
 import com.morpheusdata.model.BackupProvider as BackupProviderModel
 import com.morpheusdata.model.Icon
 import com.morpheusdata.model.OptionType
-import com.morpheusdata.model.ReferenceData
 import com.morpheusdata.response.ServiceResponse
 import com.morpheusdata.veeam.services.ApiService
 import com.morpheusdata.veeam.sync.*
@@ -25,7 +23,7 @@ class VeeamBackupProvider extends AbstractBackupProvider {
 
 	ApiService apiService
 
-	BackupJobProvider backupJobProvider;
+	VeeamBackupJobProvider backupJobProvider;
 
 	VeeamBackupProvider(Plugin plugin, MorpheusContext morpheusContext) {
 		super(plugin, morpheusContext)
@@ -245,7 +243,7 @@ class VeeamBackupProvider extends AbstractBackupProvider {
 		// scheduling and execution of the jobs. Replace the default job provider
 		// if jobs are to be managed on the external backup system.
 		if(!this.backupJobProvider) {
-			this.backupJobProvider = new DefaultBackupJobProvider(getPlugin(), morpheus);
+			this.backupJobProvider = new VeeamBackupJobProvider(getPlugin(), morpheus);
 		}
 		return this.backupJobProvider
 	}

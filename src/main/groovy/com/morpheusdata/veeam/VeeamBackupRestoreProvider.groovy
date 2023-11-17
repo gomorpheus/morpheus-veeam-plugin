@@ -3,22 +3,36 @@ package com.morpheusdata.veeam
 import com.morpheusdata.core.MorpheusContext
 import com.morpheusdata.core.Plugin
 import com.morpheusdata.core.backup.BackupRestoreProvider
+import com.morpheusdata.core.backup.response.BackupRestoreResponse
+import com.morpheusdata.core.data.DataFilter
+import com.morpheusdata.core.data.DataQuery
+import com.morpheusdata.core.util.DateUtility
+import com.morpheusdata.model.BackupProvider
+import com.morpheusdata.model.Cloud
+import com.morpheusdata.model.ComputeServer
+import com.morpheusdata.model.Workload
 import com.morpheusdata.response.ServiceResponse;
 import com.morpheusdata.model.BackupRestore;
 import com.morpheusdata.model.BackupResult;
 import com.morpheusdata.model.Backup;
 import com.morpheusdata.model.Instance
+import com.morpheusdata.veeam.services.ApiService
+import com.morpheusdata.veeam.utils.VeeamUtils
 import groovy.util.logging.Slf4j
+
+import static com.morpheusdata.veeam.VeeamBackupRestoreProvider.*
 
 @Slf4j
 class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 
 	Plugin plugin
 	MorpheusContext morpheusContext
+	ApiService apiService
 
 	VeeamBackupRestoreProvider(Plugin plugin, MorpheusContext morpheusContext) {
 		this.plugin = plugin
 		this.morpheusContext = morpheusContext
+		this.apiService = new ApiService()
 	}
 	
 	/**
@@ -98,7 +112,61 @@ class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 	 */
 	@Override
 	ServiceResponse getRestoreOptions(Backup backup, Map opts) {
-		return ServiceResponse.success()
+		log.debug "getRestoreOptions: backup: ${backup}, opts: ${opts}"
+		ServiceResponse rtn = ServiceResponse.prepare()
+
+		//If the backup has infrastructure config save, but the hostname no longer exists in cloud then we need to create a new VM.
+		//If the hostname still exists in the cloud then we can restore to the existing VM.
+		def restoreOptions = [restoreExistingEnabled:true]
+		Workload workload = this.morpheusContext.async.workload.get(backup.containerId).blockingGet()
+		//if original workload still exists, restore to that
+		if(workload) {
+			restoreOptions.restoreExistingEnabled = true
+			restoreOptions.hostname = workload.server?.hostname
+		} else {
+			def infrastructureConfig = backup.getConfigProperty('infrastructureConfig')
+			if(infrastructureConfig) {
+				//original workload was removed and backup was preserved
+				def name = infrastructureConfig.server?.displayName
+				Cloud cloud = this.morpheusContext.async.cloud.get(infrastructureConfig.server?.zoneId).blockingGet()
+				def serverResults = []
+				this.morpheusContext.async.computeServer.list(new DataQuery([
+						new DataFilter<>('zone.id', cloud.id),
+						new DataFilter<>('name', name)
+				])).blockingSubscribe { ComputeServer server ->
+					if(server.externalId != null) {
+						serverResults << server
+					}
+				}
+				def server = serverResults.size() == 1 ? serverResults.getAt(0) : null
+
+				//if there is a server with the same name in the same cloud, it was already re-created so restore there
+				if(server) {
+					restoreOptions.name = name
+					Workload restoreContainer
+					this.morpheusContext.async.workload.list(new DataQuery([
+                            new DataFilter<>('server.id', server.id)
+					])).blockingSubscribe { Workload it ->
+						restoreContainer = it
+					}
+					if(restoreContainer) {
+						restoreOptions.restoreExistingEnabled = true
+						restoreOptions.restoreContainerId = restoreContainer?.id
+					} else {
+						// only a portion of the infrastructure remains, probably an incomplete
+						// delete of the source instance, force a new restore.
+						restoreOptions.restoreNewEnabled = true
+						restoreOptions.restoreExistingEnabled = false
+					}
+				} else {
+					restoreOptions.restoreNewEnabled = true
+					restoreOptions.restoreExistingEnabled = false
+				}
+			}
+		}
+		rtn.data = restoreOptions
+		rtn.success = true
+		return rtn
 	}
 
 	/**
@@ -112,7 +180,82 @@ class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 	 */
 	@Override
 	ServiceResponse restoreBackup(BackupRestore backupRestore, BackupResult backupResult, Backup backup, Map opts) {
-		return ServiceResponse.success()
+		log.debug("restoreBackup, restore: {}, source: {}, opts: {}", backupRestore, backupResult, opts)
+		ServiceResponse rtn = ServiceResponse.prepare(new BackupRestoreResponse(backupRestore))
+		def backupSessionId = backupResult.getConfigProperty('backupSessionId')
+		log.info("Restoring backupResult {} - opts: {}", backupResult, opts)
+		try {
+			def containerId = opts.containerId ?: backup?.containerId
+			def container = containerId ? this.morpheusContext.async.workload.get(containerId).blockingGet() : null
+			ComputeServer server = container?.server?.id ? this.morpheusContext.async.computeServer.get(container.server.id).blockingGet() : null
+			Cloud cloud = server.cloud.id ? this.morpheusContext.async.cloud.get(server.cloud.id).blockingGet() : null
+			def objectRef = apiService.getVmHierarchyObjRef(backup)
+			def authConfig = apiService.getAuthConfig(backup.backupProvider)
+			def tokenResults = apiService.getToken(authConfig)
+			def token = tokenResults.token
+			def sessionId = tokenResults.sessionId
+			def infrastructureConfig = backupResult.getConfigProperty('infrastructureConfig') ?: backup.getConfigProperty('infrastructureConfig')
+
+
+			def restoreOpts = [authConfig: authConfig, cloudTypeCode: cloud?.cloudType?.code, backupType: backupResult.backupType]
+			if(backupResult.getConfigProperty("restoreHref")) {
+				restoreOpts += backupResult.getConfigMap()
+			} else {
+				restoreOpts.restorePointRef = backupResult.getConfigProperty('restorePointRef') ?: backupResult.getConfigProperty('vmRestorePointRef')
+				if(backupResult.getConfigProperty('restorePointRef')) {
+					restoreOpts.restorePointId = apiService.extractVeeamUuid(backupResult.getConfigProperty('restorePointRef'))
+				}
+				if(backupResult.getConfigProperty('vmRestorePointRef')) {
+					restoreOpts.vmRestorePointid = apiService.extractVeeamUuid(backupResult.getConfigProperty('vmRestorePointRef'))
+				}
+			}
+			restoreOpts.hierarchyRoot = backup.getConfigProperty('hierarchyRoot')
+			restoreOpts.containerId = containerId
+			restoreOpts.vmId = server.externalId
+			restoreOpts.vmName = server.displayName
+			if(restoreOpts.cloudTypeCode == 'vcd') {
+				restoreOpts.vdcId = cloud.getConfigProperty("vdcId")
+				restoreOpts.vAppId = server.internalId?.toLowerCase()?.replace("vapp-", "")
+				restoreOpts.vCenterVmId = server.uniqueId
+				objectRef = objectRef.replace("vapp-", "").replace("vm-", "")
+			}
+			log.debug("restoreBackup:[apiUrl: {}, vmId: {}, backupSessionId: {}, opts: {}", authConfig.apiUrl, objectRef, backupSessionId, restoreOpts)
+			def restoreResults = apiService.restoreVM(authConfig.apiUrl, token, objectRef, backupSessionId, restoreOpts)
+			log.debug("restoreBackup result: {}", restoreResults)
+			if(restoreResults.success) {
+				//update instance status to restoring
+				if(container.instance?.id) {
+					def instance = this.morpheusContext.async.instance.get(container.instance.id).blockingGet()
+					if(instance) {
+						instance.status = Instance.Status.restoring.toString()
+						this.morpheusContext.async.instance.save(instance).blockingGet()
+					}
+				}
+				server.internalName = infrastructureConfig?.server?.name
+				this.morpheusContext.async.computeServer.save(server).blockingGet()
+
+				backupRestore.status = 'IN_PROGRESS'
+				backupRestore.externalStatusRef = restoreResults.restoreSessionId
+				backupRestore.containerId = container.id
+				rtn.success = true
+			} else {
+				backupRestore.status = 'FAILED'
+				backupRestore.errorMessage = restoreResults.msg
+
+				if(container.instance?.id) {
+					def instance = this.morpheusContext.async.instance.get(container.instance.id).blockingGet()
+					if(instance) {
+						instance.status = Instance.Status.failed.toString()
+						this.morpheusContext.async.instance.save(instance).blockingGet()
+					}
+				}
+			}
+			apiService.logoutSession(authConfig.apiUrl, token, sessionId)
+		} catch(e) {
+			log.error("restoreBackup error", e)
+			rtn.error = "Failed to restore Veeam backup: ${e}"
+		}
+		return rtn
 	}
 
 	/**
@@ -127,6 +270,63 @@ class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 	 */
 	@Override
 	ServiceResponse refreshBackupRestoreResult(BackupRestore backupRestore, BackupResult backupResult) {
-		return ServiceResponse.success()
+		log.debug "refreshBackupRestoreResult: ${backupRestore}, ${backupResult}"
+
+		ServiceResponse<BackupRestoreResponse> rtn = ServiceResponse.prepare(new BackupRestoreResponse(backupRestore))
+		Backup backup = this.morpheusContext.async.backup.get(backupResult.backup.id).blockingGet()
+		BackupProvider backupProvider = backup.backupProvider
+		if(!backupProvider.enabled) {
+			rtn.msg = "Veeam not enabled"
+			return rtn
+		}
+
+		try{
+			def apiUrl = apiService.getApiUrl(backupProvider)
+			def session = apiService.loginSession(backupProvider)
+			def token = session.token
+			def sessionId = session.sessionId
+			def restoreSessionId = backupRestore.externalStatusRef
+			def result = apiService.getRestoreResult(apiUrl, token, restoreSessionId)
+			def restoreSession = result.result
+			apiService.logoutSession(apiUrl, token, sessionId)
+
+			log.debug "restoreSession: ${restoreSession}"
+			if(restoreSession) {
+				//update the restore with what we got back from veeam
+				rtn.data.backupRestore.externalStatusRef = restoreSession.restoreSessionId
+				rtn.data.backupRestore.externalId = restoreSession.vmId
+				rtn.data.backupRestore.status = VeeamUtils.getBackupStatus(restoreSession.result)
+				def startDate = restoreSession.startTime
+				def endDate = restoreSession.endTime
+				if(startDate && endDate) {
+					def start = DateUtility.parseDate(startDate)
+					def end = DateUtility.parseDate(endDate)
+					rtn.data.backupRestore.startDate = start
+					if(rtn.data.backupRestore.status == BackupResult.Status.SUCCEEDED.toString() || rtn.data.backupRestore.status == BackupResult.Status.FAILED.toString()) {
+						rtn.data.backupRestore.endDate = end
+					}
+					rtn.data.backupRestore.lastUpdated = new Date()
+					rtn.data.backupRestore.duration = (start && end) ? (end.time - start.time) : 0
+				}
+
+				// TODO : What to do here.. previous Morpheus impl called vmwareProvisionService
+//				// Need to update the external references
+//				def targetContainer = this.morpheusContext.async.workload.get(rtn.data.backupRestore.containerId).blockingGet()
+//				def server = targetContainer?.server
+//				if(server) {
+//					syncVmExternalRefs(rtn.data.backupRestore, server)
+//				}
+
+				// TODO : What to do here.. previous Morpheus impl called vmwareProvisionService
+				if(rtn.data.backupRestore.status == BackupResult.Status.SUCCEEDED.toString() && rtn.data.backupRestore.externalId) {
+					// connectVmNetworks
+					// updateChecksFromInstance
+					// execute command to renew the IP for CentOS!
+//					finalizeRestore(restore)
+				}
+			}
+		} catch(Exception ex) {
+			log.error("syncBackupRestoreResult error", ex)
+		}
 	}
 }
