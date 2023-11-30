@@ -142,8 +142,8 @@ class ApiService {
 					row.version = row.name?.replace('v', '')?.replace('_', '.')?.toFloat()
 					rtn.data << row
 				}
+				rtn.success = true
 			}
-			rtn.success = true
 		} else {
 			//return token errors?
 		}
@@ -200,13 +200,13 @@ class ApiService {
 						keepGoing = true
 					} else {
 						keepGoing = false
+						// we've iterated all pages successfully
+						rtn.success = true
 					}
 				} else {
 					keepGoing = false
 				}
 			}
-			//no errors - good
-			rtn.success = true
 		} else {
 			//return token errors?
 
@@ -242,13 +242,13 @@ class ApiService {
 						keepGoing = true
 					} else {
 						keepGoing = false
+						// we've iterated all pages successfully
+						rtn.success = true
 					}
 				} else {
 					keepGoing = false
 				}
 			}
-			//no errors - good
-			rtn.success = true
 		} else {
 			//return token errors?
 		}
@@ -323,13 +323,13 @@ class ApiService {
 						keepGoing = true
 					} else {
 						keepGoing = false
+						// we've iterated all pages successfully
+						rtn.success = true
 					}
 				} else {
 					keepGoing = false
 				}
 			}
-			//no errors - good
-			rtn.success = true
 		} else {
 			//return token errors?
 		}
@@ -350,8 +350,8 @@ class ApiService {
 			if(results.success == true) {
 				rtn.data = results.data
 				rtn.job = xmlToMap(results.data, true)
+				rtn.success = true
 			}
-			rtn.success = true
 		} else {
 			//return token errors?
 		}
@@ -387,13 +387,13 @@ class ApiService {
 						keepGoing = true
 					} else {
 						keepGoing = false
+						// we've iterated all pages successfully
+						rtn.success = true
 					}
 				} else {
 					keepGoing = false
 				}
 			}
-			//no errors - good
-			rtn.success = true
 		} else {
 			//return token errors?
 
