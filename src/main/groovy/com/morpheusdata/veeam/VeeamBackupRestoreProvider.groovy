@@ -26,21 +26,13 @@ import static com.morpheusdata.veeam.VeeamBackupRestoreProvider.*
 class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 
 	Plugin plugin
-	MorpheusContext morpheusContext
+	MorpheusContext morpheus
 	ApiService apiService
 
 	VeeamBackupRestoreProvider(Plugin plugin, MorpheusContext morpheusContext) {
 		this.plugin = plugin
-		this.morpheusContext = morpheusContext
+		this.morpheus = morpheusContext
 		this.apiService = new ApiService()
-	}
-	
-	/**
-	 * Returns the Morpheus Context for interacting with data stored in the Main Morpheus Application
-	 * @return an implementation of the MorpheusContext for running Future based rxJava queries
-	 */
-	MorpheusContext getMorpheus() {
-		return morpheusContext
 	}
 
 	/**
@@ -118,7 +110,7 @@ class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 		//If the backup has infrastructure config save, but the hostname no longer exists in cloud then we need to create a new VM.
 		//If the hostname still exists in the cloud then we can restore to the existing VM.
 		def restoreOptions = [restoreExistingEnabled:true]
-		Workload workload = this.morpheusContext.async.workload.get(backup.containerId).blockingGet()
+		Workload workload = morpheus.services.workload.get(backup.containerId)
 		//if original workload still exists, restore to that
 		if(workload) {
 			restoreOptions.restoreExistingEnabled = true
@@ -128,12 +120,12 @@ class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 			if(infrastructureConfig) {
 				//original workload was removed and backup was preserved
 				def name = infrastructureConfig.server?.displayName
-				Cloud cloud = this.morpheusContext.async.cloud.get(infrastructureConfig.server?.zoneId).blockingGet()
+				Cloud cloud = morpheus.services.cloud.get(infrastructureConfig.server?.zoneId)
 				def serverResults = []
-				this.morpheusContext.async.computeServer.list(new DataQuery([
+				morpheus.services.computeServer.list(new DataQuery().withFilters(
 						new DataFilter<>('zone.id', cloud.id),
 						new DataFilter<>('name', name)
-				])).blockingSubscribe { ComputeServer server ->
+				)).each { ComputeServer server ->
 					if(server.externalId != null) {
 						serverResults << server
 					}
@@ -143,15 +135,10 @@ class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 				//if there is a server with the same name in the same cloud, it was already re-created so restore there
 				if(server) {
 					restoreOptions.name = name
-					Workload restoreContainer
-					this.morpheusContext.async.workload.list(new DataQuery([
-                            new DataFilter<>('server.id', server.id)
-					])).blockingSubscribe { Workload it ->
-						restoreContainer = it
-					}
-					if(restoreContainer) {
+					Workload restoreWorkload = morpheus.services.workload.find(new DataQuery().withFilter('server.id', server.id))
+					if(restoreWorkload) {
 						restoreOptions.restoreExistingEnabled = true
-						restoreOptions.restoreContainerId = restoreContainer?.id
+						restoreOptions.restoreContainerId = restoreWorkload?.id
 					} else {
 						// only a portion of the infrastructure remains, probably an incomplete
 						// delete of the source instance, force a new restore.
@@ -186,9 +173,9 @@ class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 		log.info("Restoring backupResult {} - opts: {}", backupResult, opts)
 		try {
 			def containerId = opts.containerId ?: backup?.containerId
-			def container = containerId ? this.morpheusContext.async.workload.get(containerId).blockingGet() : null
-			ComputeServer server = container?.server?.id ? this.morpheusContext.async.computeServer.get(container.server.id).blockingGet() : null
-			Cloud cloud = server.cloud.id ? this.morpheusContext.async.cloud.get(server.cloud.id).blockingGet() : null
+			Workload workload = containerId ? morpheus.services.workload.get(containerId) : null
+			ComputeServer server = workload?.server?.id ? morpheus.services.computeServer.get(workload.server.id) : null
+			Cloud cloud = server.cloud.id ? morpheus.services.cloud.get(server.cloud.id) : null
 			def objectRef = apiService.getVmHierarchyObjRef(backup)
 			def authConfig = apiService.getAuthConfig(backup.backupProvider)
 			def tokenResults = apiService.getToken(authConfig)
@@ -224,29 +211,29 @@ class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 			log.debug("restoreBackup result: {}", restoreResults)
 			if(restoreResults.success) {
 				//update instance status to restoring
-				if(container.instance?.id) {
-					def instance = this.morpheusContext.async.instance.get(container.instance.id).blockingGet()
+				if(workload.instance?.id) {
+					def instance = morpheus.services.instance.get(workload.instance.id)
 					if(instance) {
 						instance.status = Instance.Status.restoring.toString()
-						this.morpheusContext.async.instance.save(instance).blockingGet()
+						morpheus.services.instance.save(instance)
 					}
 				}
 				server.internalName = infrastructureConfig?.server?.name
-				this.morpheusContext.async.computeServer.save(server).blockingGet()
+				morpheus.services.computeServer.save(server)
 
 				backupRestore.status = 'IN_PROGRESS'
 				backupRestore.externalStatusRef = restoreResults.restoreSessionId
-				backupRestore.containerId = container.id
+				backupRestore.containerId = workload.id
 				rtn.success = true
 			} else {
 				backupRestore.status = 'FAILED'
 				backupRestore.errorMessage = restoreResults.msg
 
-				if(container.instance?.id) {
-					def instance = this.morpheusContext.async.instance.get(container.instance.id).blockingGet()
+				if(workload.instance?.id) {
+					def instance = morpheus.services.instance.get(workload.instance.id)
 					if(instance) {
 						instance.status = Instance.Status.failed.toString()
-						this.morpheusContext.async.instance.save(instance).blockingGet()
+						morpheus.services.instance.save(instance)
 					}
 				}
 			}
@@ -273,7 +260,7 @@ class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 		log.debug "refreshBackupRestoreResult: ${backupRestore}, ${backupResult}"
 
 		ServiceResponse<BackupRestoreResponse> rtn = ServiceResponse.prepare(new BackupRestoreResponse(backupRestore))
-		Backup backup = this.morpheusContext.async.backup.get(backupResult.backup.id).blockingGet()
+		Backup backup = morpheus.services.backup.get(backupResult.backup.id)
 		BackupProvider backupProvider = backup.backupProvider
 		if(!backupProvider.enabled) {
 			rtn.msg = "Veeam not enabled"
@@ -309,24 +296,36 @@ class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 					rtn.data.backupRestore.duration = (start && end) ? (end.time - start.time) : 0
 				}
 
-				// TODO : What to do here.. previous Morpheus impl called vmwareProvisionService
-//				// Need to update the external references
-//				def targetContainer = this.morpheusContext.async.workload.get(rtn.data.backupRestore.containerId).blockingGet()
-//				def server = targetContainer?.server
-//				if(server) {
-//					syncVmExternalRefs(rtn.data.backupRestore, server)
-//				}
-
-				// TODO : What to do here.. previous Morpheus impl called vmwareProvisionService
 				if(rtn.data.backupRestore.status == BackupResult.Status.SUCCEEDED.toString() && rtn.data.backupRestore.externalId) {
-					// connectVmNetworks
-					// updateChecksFromInstance
-					// execute command to renew the IP for CentOS!
-//					finalizeRestore(restore)
+					finalizeRestore(rtn.data.backupRestore)
 				}
 			}
 		} catch(Exception ex) {
 			log.error("syncBackupRestoreResult error", ex)
 		}
+	}
+
+	ServiceResponse finalizeRestore(BackupRestore restore) {
+		log.info("finalizeRestore: {}", restore)
+		def instance
+		try {
+			// Need to update the externalId as it has changed
+			def targetWorkload = morpheus.services.workload.get(restore.containerId)
+			def server = targetWorkload?.server
+
+			morpheus.async.backup.backupRestore.finalizeRestore(targetWorkload)
+
+			// do we still need this with finalizeRestore above?
+			// if(server?.zone?.zoneType?.code == 'vmware' && server?.serverOs?.vendor == 'centos') {
+			// 	log.debug("Finalizing restore: renew IP for CentOS VM.")
+			// 	morpheus.executeCommandOnServer(server, "dhclient", null, null, null, null, null, null, null, true, true)
+			// }
+		} catch(e) {
+			log.error("Error in finalizeRestore: ${e}", e)
+			instance?.status = Instance.Status.failed
+			instance?.save(flush:true)
+		}
+
+		return ServiceResponse.success()
 	}
 }

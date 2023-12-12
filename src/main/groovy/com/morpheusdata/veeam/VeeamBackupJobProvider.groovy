@@ -2,6 +2,7 @@ package com.morpheusdata.veeam
 
 import com.morpheusdata.core.MorpheusContext
 import com.morpheusdata.core.Plugin
+import com.morpheusdata.core.backup.BackupJobProvider
 import com.morpheusdata.core.backup.DefaultBackupJobProvider
 import com.morpheusdata.core.backup.response.BackupExecutionResponse
 import com.morpheusdata.core.data.DataFilter
@@ -13,20 +14,53 @@ import com.morpheusdata.model.BackupProvider
 import com.morpheusdata.model.BackupResult
 import com.morpheusdata.response.ServiceResponse
 import com.morpheusdata.veeam.services.ApiService
+import com.morpheusdata.veeam.utils.VeeamUtils
+import groovy.util.logging.Slf4j
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 
-class VeeamBackupJobProvider extends DefaultBackupJobProvider {
+@Slf4j
+class VeeamBackupJobProvider implements BackupJobProvider {
 
+	Plugin plugin;
+	MorpheusContext morpheus;
 	ApiService apiService
-	VeeamBackupExecutionProvider executionProvider
 
-	public VeeamBackupJobProvider(Plugin plugin, MorpheusContext morpheus) {
-		super(plugin, morpheus)
+	VeeamBackupJobProvider(Plugin plugin, MorpheusContext morpheus) {
+		this.plugin = plugin
+		this.morpheus = morpheus
 		this.apiService = new ApiService()
-		this.executionProvider = new VeeamBackupExecutionProvider(plugin, morpheus)
 	}
 
 	@Override
-	public ServiceResponse cloneBackupJob(BackupJob sourceBackupJobModel, BackupJob backupJobModel, Map opts) {
+	ServiceResponse configureBackupJob(BackupJob backupJob, Map config, Map opts) {
+		if(config.target) {
+			backupJob.backupRepository = morpheus.services.backupRepository.get(config.target.toLong())
+		} else if(config.backupRepository) {
+			backupJob.backupRepository = morpheus.services.backupRepository.get(config.backupRepository.toLong())
+		}
+		def jobScheduleId = config.jobSchedule
+		if (jobScheduleId) {
+			// TODO: create execution schedule services
+			def jobSchedule = morpheus.services.executeScheduleType.get(jobScheduleId?.toLong())
+			backupJob.scheduleType = jobSchedule
+			backupJob.nextFire =  morpheus.services.executeScheduleType.calculateNextFire(jobSchedule)
+		}
+		backupJob.retentionCount = null
+	}
+
+	@Override
+	ServiceResponse validateBackupJob(BackupJob backupJob, Map config, Map opts) {
+		return ServiceResponse.success()
+	}
+
+	@Override
+	ServiceResponse createBackupJob(BackupJob backupJob, Map map) {
+		return ServiceResponse.error("Create backup job not supported.")
+	}
+
+	@Override
+	ServiceResponse cloneBackupJob(BackupJob sourceBackupJobModel, BackupJob backupJobModel, Map opts) {
 		def rtn = [success:false]
 		try {
 			def backupProvider = sourceBackupJobModel.backupProvider
@@ -56,7 +90,12 @@ class VeeamBackupJobProvider extends DefaultBackupJobProvider {
 	}
 
 	@Override
-	public ServiceResponse deleteBackupJob(BackupJob backupJobModel, Map opts) {
+	ServiceResponse addToBackupJob(BackupJob backupJob, Map map) {
+		return ServiceResponse.error("Add to backup job not supported.")
+	}
+
+	@Override
+	ServiceResponse deleteBackupJob(BackupJob backupJobModel, Map opts) {
 		log.debug("deleteBackupJob: {}, {}", backupJobModel, opts)
 		ServiceResponse rtn = ServiceResponse.prepare()
 		try {
@@ -68,7 +107,7 @@ class VeeamBackupJobProvider extends DefaultBackupJobProvider {
 			}
 			try{
 				def backupProvider = backupJobModel.backupProvider
-				def apiVersion = executionProvider.getApiVersion(backupProvider)
+				def apiVersion = VeeamUtils.getApiVersion(backupProvider)
 				def apiUrl = apiService.getApiUrl(backupProvider)
 				def authConfig = apiService.getAuthConfig(backupProvider)
 				def session = apiService.loginSession(authConfig)
@@ -93,7 +132,7 @@ class VeeamBackupJobProvider extends DefaultBackupJobProvider {
 	}
 
 	@Override
-	public ServiceResponse executeBackupJob(BackupJob backupJobModel, Map opts) {
+	ServiceResponse executeBackupJob(BackupJob backupJobModel, Map opts) {
 		log.debug("executeBackupJob: {}, {}", backupJobModel, opts)
 		ServiceResponse<List<BackupExecutionResponse>> rtn = new ServiceResponse<List<BackupExecutionResponse>>()
 		rtn.success = false
@@ -116,17 +155,19 @@ class VeeamBackupJobProvider extends DefaultBackupJobProvider {
 
 			Account tmpAccount = opts.account ?: backupJobModel.account
 			List<Backup> jobBackups = []
-			this.morpheus.async.backup.list(new DataQuery([
+			this.morpheus.services.backup.list(new DataQuery().withFilters(
 			        new DataFilter<>('account.id', tmpAccount.id),
 			        new DataFilter<>('backupJob.id', backupJobModel.id),
 					new DataFilter<>('active', true)
-			])).blockingSubscribe { Backup backup ->
+			)).each { Backup backup ->
 				if(!opts.user || backup.createdBy?.id == opts.user.id) {
 					jobBackups << backup
 				}
 			}
 			jobBackups = jobBackups.sort { it.instanceId }
 
+			// TODO: this should probably be moved into core: backupResult.create(backup: backup, backupJob: backupJobModel)
+			// where the backup service also generates the backup set ID
 			// For each backup associated to the job, save the results of the backup
 			def currInstanceId
 			def backupSetId = VeeamBackupExecutionProvider.generateDateKey(10)

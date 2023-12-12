@@ -1437,7 +1437,6 @@ class ApiService {
 
 	static getManagedServerTypeFromZoneType(String cloudTypeCode) {
 		def rtn = cloudTypeCode == 'vmware' ? 'VC' : 'HV'
-		//todo find out real code for hyperv
 		if(cloudTypeCode == 'hyperv') {
 			rtn = MANAGED_SERVER_TYPE_HYPERV
 		} else if(cloudTypeCode == 'vmware') {

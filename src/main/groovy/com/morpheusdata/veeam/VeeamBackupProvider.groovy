@@ -32,6 +32,9 @@ class VeeamBackupProvider extends AbstractBackupProvider {
 		VeeamVMWareBackupTypeProvider backupTypeProvider = new VeeamVMWareBackupTypeProvider(plugin, morpheus)
 		plugin.registerProvider(backupTypeProvider)
 		addScopedProvider(backupTypeProvider, "vmware", null)
+		addScopedProvider(backupTypeProvider, "scvmm", null)
+		addScopedProvider(backupTypeProvider, "hyperv", null)
+		addScopedProvider(backupTypeProvider, "vcd", null)
 	}
 
 	/**
@@ -150,31 +153,31 @@ class VeeamBackupProvider extends AbstractBackupProvider {
 	Collection<OptionType> getOptionTypes() {
 		Collection<OptionType> optionTypes = new ArrayList();
 		optionTypes << new OptionType(
-				code:"backupProviderType.${this.getCode()}.host", inputType:OptionType.InputType.TEXT, name:'host', category:"backupProviderType.${this.getCode()}",
+				code:"backupProviderType.veeam.host", inputType:OptionType.InputType.TEXT, name:'host', category:"backupProviderType.veeam",
 				fieldName:'host', fieldCode: 'gomorpheus.optiontype.ApiUrl', fieldLabel:'Host', fieldContext:'domain', fieldGroup:'default',
 				required:true, enabled:true, editable:true, global:false, placeHolder:null, helpBlock:'', defaultValue:null, custom:false,
 				displayOrder:10, fieldClass:null
 		)
 		optionTypes << new OptionType(
-				code:"backupProviderType.${this.getCode()}.port", inputType:OptionType.InputType.NUMBER, name:'port', category:"backupProviderType.${this.getCode()}",
+				code:"backupProviderType.veeam.port", inputType:OptionType.InputType.NUMBER, name:'port', category:"backupProviderType.veeam",
 				fieldName:'port', fieldCode: 'gomorpheus.optiontype.Port', fieldLabel:'Port', fieldContext:'domain', fieldGroup:'default',
 				required:false, enabled:true, editable:true, global:false, placeHolder:null, helpBlock:'', defaultValue:null, custom:false,
 				displayOrder:15, fieldClass:null
 		)
 		optionTypes << new OptionType(
-				code:"backupProviderType.${this.getCode()}.credential", inputType:OptionType.InputType.CREDENTIAL, name:'credentials', category:"backupProviderType.${this.getCode()}",
+				code:"backupProviderType.veeam.credential", inputType:OptionType.InputType.CREDENTIAL, name:'credentials', category:"backupProviderType.veeam",
 				fieldName:'type', fieldCode:'gomorpheus.label.credentials', fieldLabel:'Credentials', fieldContext:'credential', optionSource:'credentials',
 				required:true, enabled:true, editable:true, global:false, placeHolder:null, helpBlock:'', defaultValue:'local', custom:false,
 				displayOrder:25, fieldClass:null, wrapperClass:null, config: JsonOutput.toJson([credentialTypes:['username-password']]).toString()
 		)
 		optionTypes << new OptionType(
-				code:"backupProviderType.${this.getCode()}.username", inputType:OptionType.InputType.TEXT, name:'username', category:"backupProviderType.${this.getCode()}",
+				code:"backupProviderType.veeam.username", inputType:OptionType.InputType.TEXT, name:'username', category:"backupProviderType.veeam",
 				fieldName:'username', fieldCode: 'gomorpheus.optiontype.Username', fieldLabel:'Username', fieldContext:'domain', fieldGroup:'default',
 				required:false, enabled:true, editable:true, global:false, placeHolder:null, helpBlock:'', defaultValue:null, custom:false,
 				displayOrder:30, fieldClass:null, localCredential:true
 		)
 		optionTypes << new OptionType(
-				code:"backupProviderType.${this.getCode()}.password", inputType:OptionType.InputType.PASSWORD, name:'password', category:"backupProviderType.${this.getCode()}",
+				code:"backupProviderType.veeam.password", inputType:OptionType.InputType.PASSWORD, name:'password', category:"backupProviderType.veeam",
 				fieldName:'password', fieldCode: 'gomorpheus.optiontype.Password', fieldLabel:'Password', fieldContext:'domain', fieldGroup:'default',
 				required:false, enabled:true, editable:true, global:false, placeHolder:null, helpBlock:'', defaultValue:null, custom:false,
 				displayOrder:35, fieldClass:null, localCredential:true
@@ -413,12 +416,11 @@ class VeeamBackupProvider extends AbstractBackupProvider {
 		def rtn = [success: true]
 		try {
 			def objCategory = "veeam.backup.managedServer.${backupProvider.id}"
-			getMorpheus().async.referenceData.list(new DataQuery().withFilters([
+			def removeItems = morpheus.services.referenceData.list(new DataQuery().withFilters([
 					new DataFilter('category', objCategory),
 					new DataFilter('account.id', backupProvider.account.id)
-			])).blockingSubscribe {
-				getMorpheus().async.referenceData.bulkRemove([it]).blockingGet()
-			}
+			]))
+			morpheus.services.referenceData.bulkRemove(removeItems)
 		} catch (Exception e) {
 			log.error "Error removing managed servers for backup provider ${backupProvider.name}[${backupProvider.id}]", e
 			rtn.msg = "Error removing managed servers: ${e}".toString()
@@ -432,12 +434,11 @@ class VeeamBackupProvider extends AbstractBackupProvider {
 		def rtn = [success: true]
 		try {
 			def objCategory = "veeam.backup.backupServer.${backupProvider.id}"
-			getMorpheus().async.referenceData.list(new DataQuery().withFilters([
+			def removeItems = morpheus.services.referenceData.list(new DataQuery().withFilters([
 					new DataFilter('category', objCategory),
 					new DataFilter('account.id', backupProvider.account.id)
-			])).blockingSubscribe {
-				getMorpheus().async.referenceData.bulkRemove([it]).blockingGet()
-			}
+			]))
+			morpheus.services.referenceData.bulkRemove(removeItems)
 		} catch (Exception e) {
 			log.error "Error removing backup servers for backup provider ${backupProvider.name}[${backupProvider.id}]", e
 			rtn.msg = "Error removing backup servers: ${e}".toString()
@@ -457,7 +458,7 @@ class VeeamBackupProvider extends AbstractBackupProvider {
 				if(currApiVersion != latestVersionInfo.apiVersion) {
 					log.debug("Updating Veeam API version to ${latestVersionInfo.apiVersion}.")
 					backupProviderModel.setConfigProperty('apiVersion', latestVersionInfo.apiVersion)
-					morpheus.async.backupProvider.bulkSave([backupProviderModel]).blockingGet()
+					morpheus.services.backupProvider.save(backupProviderModel)
 				}
 				rtn.success = true
 			}
