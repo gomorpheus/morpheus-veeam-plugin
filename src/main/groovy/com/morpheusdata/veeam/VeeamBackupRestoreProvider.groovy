@@ -169,14 +169,14 @@ class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 	ServiceResponse restoreBackup(BackupRestore backupRestore, BackupResult backupResult, Backup backup, Map opts) {
 		log.debug("restoreBackup, restore: {}, source: {}, opts: {}", backupRestore, backupResult, opts)
 		ServiceResponse rtn = ServiceResponse.prepare(new BackupRestoreResponse(backupRestore))
-		def backupSessionId = backupResult.getConfigProperty('backupSessionId')
+		def backupSessionId = backupResult.externalId ?: backupResult.getConfigProperty('backupSessionId')
 		log.info("Restoring backupResult {} - opts: {}", backupResult, opts)
 		try {
 			def containerId = opts.containerId ?: backup?.containerId
 			Workload workload = containerId ? morpheus.services.workload.get(containerId) : null
 			ComputeServer server = workload?.server?.id ? morpheus.services.computeServer.get(workload.server.id) : null
 			Cloud cloud = server.cloud.id ? morpheus.services.cloud.get(server.cloud.id) : null
-			def objectRef = apiService.getVmHierarchyObjRef(backup)
+			def objectRef = VeeamUtils.getVmHierarchyObjRef(backup, server)
 			def authConfig = apiService.getAuthConfig(backup.backupProvider)
 			def tokenResults = apiService.getToken(authConfig)
 			def token = tokenResults.token
@@ -190,10 +190,10 @@ class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 			} else {
 				restoreOpts.restorePointRef = backupResult.getConfigProperty('restorePointRef') ?: backupResult.getConfigProperty('vmRestorePointRef')
 				if(backupResult.getConfigProperty('restorePointRef')) {
-					restoreOpts.restorePointId = apiService.extractVeeamUuid(backupResult.getConfigProperty('restorePointRef'))
+					restoreOpts.restorePointId = VeeamUtils.extractVeeamUuid(backupResult.getConfigProperty('restorePointRef'))
 				}
 				if(backupResult.getConfigProperty('vmRestorePointRef')) {
-					restoreOpts.vmRestorePointid = apiService.extractVeeamUuid(backupResult.getConfigProperty('vmRestorePointRef'))
+					restoreOpts.vmRestorePointid = VeeamUtils.extractVeeamUuid(backupResult.getConfigProperty('vmRestorePointRef'))
 				}
 			}
 			restoreOpts.hierarchyRoot = backup.getConfigProperty('hierarchyRoot')
@@ -294,6 +294,7 @@ class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 					}
 					rtn.data.backupRestore.lastUpdated = new Date()
 					rtn.data.backupRestore.duration = (start && end) ? (end.time - start.time) : 0
+					rtn.data.updates = true
 				}
 
 				if(rtn.data.backupRestore.status == BackupResult.Status.SUCCEEDED.toString() && rtn.data.backupRestore.externalId) {

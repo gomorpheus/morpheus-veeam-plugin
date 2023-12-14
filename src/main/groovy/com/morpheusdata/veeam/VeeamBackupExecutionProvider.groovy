@@ -109,13 +109,13 @@ class VeeamBackupExecutionProvider implements BackupExecutionProvider {
 			def externalId = server?.externalId
 			//build api opts
 			def apiOpts = [
-					jobId : apiService.extractVeeamUuid(backupJob.externalId),
+					jobId : VeeamUtils.extractVeeamUuid(backupJob.externalId),
 					jobName: backupJob.name,
 					repositoryId: backupJob.backupRepository?.internalId,
 					vmName: vmName,
 					externalId: externalId,
 					backupName: backupName,
-					cloudType: apiService.getCloudTypeFromZoneType(cloud.cloudType.code)
+					cloudType: VeeamUtils.getCloudTypeFromZoneType(cloud.cloudType.code)
 			]
 			if(opts.newBackup && backupJob.sourceJobId) {
 				apiOpts.removeJobs = true
@@ -128,7 +128,7 @@ class VeeamBackupExecutionProvider implements BackupExecutionProvider {
 				managedServers << hierarchyRoot
 			} else {
 				def objCategory = "veeam.backup.managedServer.${backupProvider.id}"
-				def typeFilter = apiService.getManagedServerTypeFromZoneType(cloud.cloudType.code)
+				def typeFilter = VeeamUtils.getManagedServerTypeFromZoneType(cloud.cloudType.code)
 				def managedServerResults = morpheus.services.referenceData.list(new DataQuery().withFilters(
 				        new DataFilter("account.id", backupProvider.account.id),
 				        new DataFilter("category", objCategory),
@@ -138,7 +138,7 @@ class VeeamBackupExecutionProvider implements BackupExecutionProvider {
 					if(apiVersion > 1.3) {
 						managedServers << it.getConfigProperty('hierarchyRootUid')
 					} else {
-						managedServers << apiService.extractVeeamUuid(it.keyValue)
+						managedServers << VeeamUtils.extractVeeamUuid(it.keyValue)
 					}
 				}
 			}
@@ -185,7 +185,7 @@ class VeeamBackupExecutionProvider implements BackupExecutionProvider {
 				rtn.success = true
 				return rtn
 			}
-			def backupJobId = apiService.extractVeeamUuid(backupJob?.externalId ?: backup.getConfigProperty("backupJobId"))
+			def backupJobId = VeeamUtils.extractVeeamUuid(backupJob?.externalId ?: backup.getConfigProperty("backupJobId"))
 			try{
 				def backupProvider = backup.backupProvider
 				def authConfig = apiService.getAuthConfig(backupProvider)
@@ -199,7 +199,7 @@ class VeeamBackupExecutionProvider implements BackupExecutionProvider {
 					Workload workload = morpheus.services.workload.get(backup.containerId)
 					if(workload.server?.id) {
 						ComputeServer server = morpheus.services.computeServer.get(workload.server.id)
-						backupId = backupJobBackups.data?.find { apiService.extractMOR(it.objectRef.toString()) == server.externalId }?.objectId
+						backupId = backupJobBackups.data?.find { VeeamUtils.extractMOR(it.objectRef.toString()) == server.externalId }?.objectId
 						log.info("deleteBackup, found backup by objectRef: ${backupId}")
 					}
 					// otherwise find by backup name
@@ -336,14 +336,18 @@ class VeeamBackupExecutionProvider implements BackupExecutionProvider {
 			def session = apiService.loginSession(backupProvider)
 			def token = session.token
 			def sessionId = session.sessionId
+			log.debug("token: ${token}")
 			if(token) {
+				log.debug("getting last result")
 				def lastResult = morpheus.services.backup.backupResult.find(new DataQuery().withFilters(
 					new DataFilter("backup.id", backup.id),
 					new DataFilter("status", "ne", BackupResult.Status.START_REQUESTED)
-				).withSort("dateCreated", "desc"))
+				).withSort("dateCreated", DataQuery.SortOrder.desc))
 
+				log.debug("last result: ${lastResult}")
 				def hierarchyRoot = VeeamUtils.getHierarchyRoot(backup)
 				def backupServerId = VeeamUtils.getBackupServerId(backup)
+				log.debug("hierarchyRoot: ${hierarchyRoot} backupServerId: ${backupServerId}")
 				if(hierarchyRoot && backupServerId) {
 					def vmRefId
 					def vmName = computeServer.name
@@ -355,22 +359,24 @@ class VeeamBackupExecutionProvider implements BackupExecutionProvider {
 						new DataFilter("status", BackupResult.Status.START_REQUESTED)
 					)
 					if(cloud.cloudType.code == "hyperv" || cloud.cloudType.code == "scvmm") {
-						opts.cloudType = apiService.CLOUD_TYPE_HYPERV
+						opts.cloudType = VeeamUtils.CLOUD_TYPE_HYPERV
 						//we don't store the GUID for hyper-v servers, just the name - so use the name lookup
 						vmName = vmRefId ?: vmName
 						vmRefId = null
 					} else if(cloud.cloudType.code == 'vcd') {
-						opts.cloudType = apiService.CLOUD_TYPE_VCD
-						def managedServerVmIdResults = findManagedServerVmId(authConfig, token, apiService.CLOUD_TYPE_VMWARE, backupProvider, computeServer.uniqueId)
+						opts.cloudType = VeeamUtils.CLOUD_TYPE_VCD
+						def managedServerVmIdResults = findManagedServerVmId(authConfig, token, VeeamUtils.CLOUD_TYPE_VMWARE, backupProvider, computeServer.uniqueId)
 						if(managedServerVmIdResults.success && managedServerVmIdResults.data.vmId) {
 							vmId = managedServerVmIdResults.data.vmId
 						}
 						vmRefId = null
-					} else { // if(zone.zoneType.equals("vmware")) {
-						opts.cloudType = apiService.CLOUD_TYPE_VMWARE
+					} else if(cloud.cloudType.code == "vmware") {
+						opts.cloudType = VeeamUtils.CLOUD_TYPE_VMWARE
 						vmRefId = computeServer.externalId
 					}
+					log.debug("getting result count for backup ${backup.id} with cloud type ${opts.cloudType} and vmRefId ${vmRefId}")
 					def resultCount = morpheus.services.backup.backupResult.count(resultCountQuery.withFilter("backupType", 'default'))
+					log.debug("Has result count; ${resultCount}")
 					hasFullBackup = (resultCount > 0)
 
 					if(!vmId) {
@@ -384,18 +390,43 @@ class VeeamBackupExecutionProvider implements BackupExecutionProvider {
 						}
 					}
 
+					log.debug("executeBackup vmId: ${vmId}")
 					if(vmId) {
 						if(hasFullBackup) {
-							rtn = apiService.startQuickBackup(authConfig, backupServerId, vmId, [lastBackupSessionId: lastResult?.getConfigProperty("backupSessionId")])
-							rtn.data.backupResult.backupType = 'quickbackup'
+							def startResponse = apiService.startQuickBackup(authConfig, backupServerId, vmId, [lastBackupSessionId: lastResult?.getConfigProperty("backupSessionId")])
+							if(startResponse.success) {
+								rtn.data.backupResult.externalId = startResponse.backupSessionId
+								rtn.data.backupResult.startDate = DateUtility.parseDate(startResponse.startDate as CharSequence)
+								rtn.data.backupResult.backupType = 'quickbackup'
+								rtn.data.updates = true
+								rtn.success = true
+							} else {
+								rtn.data.backupResult.status = BackupResult.Status.FAILED.toString()
+								rtn.data.backupResult.statusMessage = startResponse.errorMessage ?: startResponse.msg
+								rtn.data.updates = true
+								rtn.msg = startResponse.errorMessage ?: startResponse.msg
+								rtn.success = false
+							}
 						} else {
 							BackupRepository repository = backup.backupRepository
 							if(!repository) {
 								repository = morpheus.services.backupRepository.find(new DataQuery().withFilter("category", "veeam.repository.${backupProvider.id}"))
 							}
 							if(repository) {
-								rtn = apiService.startVeeamZip(authConfig, backupServerId, repository.externalId, vmId, [lastBackupSessionId: lastResult?.getConfigProperty("backupSessionId"), vmwToolsInstalled: computeServer.toolsInstalled])
-								rtn.data.backupResult.backupType = 'veeamzip'
+								def startResponse = apiService.startVeeamZip(authConfig, backupServerId, repository.externalId, vmId, [lastBackupSessionId: lastResult?.getConfigProperty("backupSessionId"), vmwToolsInstalled: computeServer.toolsInstalled])
+								if(startResponse.success) {
+									rtn.data.backupResult.externalId = startResponse.backupSessionId
+									rtn.data.backupResult.startDate = DateUtility.parseDate(startResponse.startDate as CharSequence)
+									rtn.data.backupResult.backupType = 'veeamzip'
+									rtn.data.updates = true
+									rtn.success = true
+								} else {
+									rtn.data.backupResult.status = BackupResult.Status.FAILED.toString()
+									rtn.data.backupResult.statusMessage = startResponse.errorMessage ?: startResponse.msg
+									rtn.data.updates = true
+									rtn.msg = startResponse.errorMessage ?: startResponse.msg
+									rtn.success = false
+								}
 							} else {
 								rtn.msg = "Backup repository not found."
 							}
@@ -421,7 +452,7 @@ class VeeamBackupExecutionProvider implements BackupExecutionProvider {
 	/**
 	 * Periodically call until the backup execution has successfully completed. The default refresh interval is 60 seconds.
 	 * @param backupResult the reference to the results of the backup execution including the last known status. Set the
-	 *                     status to a canceled/succeeded/failed value from one of the {@link BackupStatusUtility} values
+	 *                     status to a canceled/succeeded/failed value from one of the {@link BackupResult.Status} values
 	 *                     to end the execution process.
 	 * @return a {@link ServiceResponse} indicating the success or failure of the method. A success value
 	 * of 'false' will halt the further execution process.n
@@ -439,9 +470,13 @@ class VeeamBackupExecutionProvider implements BackupExecutionProvider {
 				def token = session.token
 				def sessionId = session.sessionId
 				def apiUrl = authConfig.apiUrl
-				if(backupResultConfig.backupSessionId) {
-					log.info("Fetching veeam info for backup ${backupResult.id} session ${backupResultConfig.backupSessionId ?: "<No session ID found>"}")
-					def getBackupResult = apiService.getBackupResult(apiUrl, token, backupResultConfig.backupSessionId)
+				def backupSessionId = backupResult.externalId ?: backupResultConfig.backupSessionId
+				def workload = morpheus.services.workload.get(backup.containerId)
+				def server = workload?.server
+				log.debug("refreshBackupResult backupSessionId: ${backupSessionId}")
+				if(backupSessionId) {
+					log.info("Fetching veeam info for backup ${backupResult.id} session ${backupSessionId ?: "<No session ID found>"}")
+					def getBackupResult = apiService.getBackupResult(apiUrl, token, backupSessionId)
 					def backupSession = getBackupResult.result
 					apiService.logoutSession(apiUrl, token, sessionId)
 
@@ -484,9 +519,9 @@ class VeeamBackupExecutionProvider implements BackupExecutionProvider {
 									config.restoreLink = restoreLink
 									config.restoreType = restoreLink.type.toString()
 									config.restoreHref = restoreLink.href.toString()
-									config.restoreRef = apiService.extractVeeamUuid(config.restoreHref.toString())
+									config.restoreRef = VeeamUtils.extractVeeamUuid(config.restoreHref.toString())
 								} else {
-									def objectRef = apiService.getVmHierarchyObjRef(backupResult.backup)
+									def objectRef = VeeamUtils.getVmHierarchyObjRef(backupResult.backup, server)
 									def restorePoint = apiService.getRestorePoint(authConfig, objectRef, [startRefDateStr: startDate])
 									if(restorePoint.data?.externalId) {
 										config.restorePointRef = restorePoint.data.externalId
@@ -534,7 +569,11 @@ class VeeamBackupExecutionProvider implements BackupExecutionProvider {
 			if(token) {
 				//def backup = Backup.get(backupResult.backupId)
 				def backupJobId = backup.externalId
-				rtn = apiService.stopBackupJob(apiUrl, token, backupJobId)
+				if(backupJobId) {
+					rtn = apiService.stopBackupJob(apiUrl, token, backupJobId)
+				} else {
+					rtn.success = true
+				}
 			}
 			apiService.logoutSession(apiUrl, token, sessionId)
 		} catch (e) {

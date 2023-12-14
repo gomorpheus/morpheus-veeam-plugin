@@ -3,6 +3,8 @@ package com.morpheusdata.veeam.services
 import com.morpheusdata.core.util.DateUtility
 import com.morpheusdata.core.util.HttpApiClient
 import com.morpheusdata.model.BackupProvider
+import com.morpheusdata.veeam.utils.VeeamUtils
+import com.morpheusdata.veeam.utils.VeeamScheduleUtils
 import groovy.util.logging.Slf4j
 import groovy.xml.StreamingMarkupBuilder
 
@@ -15,31 +17,8 @@ class ApiService {
 	static taskSleepInterval = 5l * 1000l //5 seconds
 	static maxTaskAttempts = 36
 
-	static CLOUD_TYPE_VMWARE = "VMWare"
-	static CLOUD_TYPE_HYPERV = "HyperV"
-	static CLOUD_TYPE_SCVMM = "Scvmm"
-	static CLOUD_TYPE_VCD = "vCloud"
-
-	static MANAGED_SERVER_TYPE_VCENTER = "VC"
-	static MANAGED_SERVER_TYPE_HYPERV = "HvServer"
-	static MANAGED_SERVER_TYPE_SCVMM = "Scvmm"
-	static MANAGED_SERVER_TYPE_VCD = "VcdSystem"
-
-	static buildHeaders(Map headers, String token, Map opts=[:]) {
-		def rtn = [:]
-		if(token) {
-			rtn.'X-RestSvcSessionId' = token
-		}
-		if(opts.format == 'json') {
-			rtn.Accept = 'application/json'
-		} else {
-			rtn.Accept = 'application/xml'
-		}
-
-		return rtn + headers
-	}
-
 	def getApiUrl(BackupProvider backupProvider) {
+		backupProvider.serviceUrl
 		def scheme = backupProvider.host.contains('http') ? '' : 'http://'
 		def apiUrl = "${scheme}${backupProvider.host}:${backupProvider.port}"
 		return apiUrl.toString()
@@ -138,6 +117,7 @@ class ApiService {
 			def results = httpApiClient.callXmlApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'GET')
 			if(results.success == true) {
 				results.data.SupportedVersions.SupportedVersion.each { supportedVersion ->
+					log.debug("Veeam support API versions: ${supportedVersion}")
 					def row = xmlToMap(supportedVersion, true)
 					row.version = row.name?.replace('v', '')?.replace('_', '.')?.toFloat()
 					rtn.data << row
@@ -167,7 +147,7 @@ class ApiService {
 		return rtn
 	}
 
-	static listBackupJobs(Map authConfig) {
+	static listBackupJobs(Map authConfig, Map opts=[:]) {
 		log.debug "listBackupJobs: ${authConfig}"
 		def rtn = [success:false, jobs:[]]
 		def tokenResults = getToken(authConfig)
@@ -177,8 +157,8 @@ class ApiService {
 			def page = '1'
 			def perPage = '50'
 			def query = [format:'Entity', pageSize:perPage, page:page]
-//			if(opts.backupType)
-//				query.filter = 'Platform==' + opts.backupType
+			if(opts.backupType)
+				query.filter = 'Platform==' + opts.backupType
 			def keepGoing = true
 			while(keepGoing) {
 				HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams:query)
@@ -190,7 +170,7 @@ class ApiService {
 					results.data.Job?.each { job ->
 						def row = xmlToMap(job, true)
 						row.externalId = row.uid
-						row.scheduleCron = decodeScheduling(job)
+						row.scheduleCron = VeeamScheduleUtils.decodeScheduling(job)
 
 						rtn.jobs << row
 					}
@@ -214,7 +194,7 @@ class ApiService {
 		return rtn
 	}
 
-	static listManagedServers(Map authConfig) {
+	static listManagedServers(Map authConfig, Map opts=[:]) {
 		def rtn = [success:false, managedServers:[]]
 		def tokenResults = getToken(authConfig)
 		if(tokenResults.success == true) {
@@ -223,8 +203,8 @@ class ApiService {
 			def page = '1'
 			def perPage = '50'
 			def query = [format:'Entity', pageSize:perPage, page:page]
-//			if(opts.managedServerType)
-//				query.filter = 'managedServerType==' + opts.managedServerType
+			if(opts.managedServerType)
+				query.filter = 'managedServerType==' + opts.managedServerType
 			def keepGoing = true
 			while(keepGoing) {
 				HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
@@ -294,7 +274,7 @@ class ApiService {
 		return rtn
 	}
 
-	static listBackupServers(Map authConfig) {
+	static listBackupServers(Map authConfig, Map opts=[:] ) {
 		def rtn = [success:false, backupServers:[]]
 		def tokenResults = getToken(authConfig)
 		if(tokenResults.success == true) {
@@ -303,8 +283,8 @@ class ApiService {
 			def page = '1'
 			def perPage = '50'
 			def query = [format:'Entity', pageSize:perPage, page:page]
-//			if(opts.managedServerType)
-//				query.filter = 'managedServerType==' + opts.managedServerType
+			if(opts.managedServerType)
+				query.filter = 'managedServerType==' + opts.managedServerType
 			def keepGoing = true
 			while(keepGoing) {
 				HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
@@ -358,7 +338,7 @@ class ApiService {
 		return rtn
 	}
 
-	static getBackupRepositories(Map authConfig) {
+	static getBackupRepositories(Map authConfig, Map opts=[:]) {
 		def rtn = [success:false, repositories:[]]
 		def tokenResults = getToken(authConfig)
 		if(tokenResults.success == true) {
@@ -367,8 +347,8 @@ class ApiService {
 			def page = '1'
 			def perPage = '50'
 			def query = [format:'Entity', pageSize:perPage, page:page]
-//			if(opts.backupType)
-//				query.filter = 'Platform==' + opts.backupType
+			if(opts.backupType)
+				query.filter = 'Platform==' + opts.backupType
 			def keepGoing = true
 			while(keepGoing) {
 				HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
@@ -416,7 +396,7 @@ class ApiService {
 		rtn.jobId = backupJobId
 		rtn.jobName = name
 		rtn.scheduleEnabled = job.ScheduleEnabled.toString()
-		rtn.scheduleCron = decodeScheduling(job)
+		rtn.scheduleCron = VeeamScheduleUtils.decodeScheduling(job)
 		return rtn
 	}
 
@@ -470,7 +450,7 @@ class ApiService {
 						//find the job link
 						def jobLink = taskResults.links?.find{ it.type == 'Job' }
 						if(jobLink) {
-							rtn.jobId = parseEntityId(jobLink.href)
+							rtn.jobId = VeeamUtils.parseEntityId(jobLink.href)
 							def jobInfo = getBackupJob(authConfig.apiUrl, tokenResults.token, rtn.jobId)
 							rtn.scheduleCron = jobInfo.scheduleCron
 							rtn.success = true
@@ -624,8 +604,8 @@ class ApiService {
 											log.debug("ONLY FOUND ONE OBJECT IN JOB")
 											def tmpJobObj = jobResults.job.jobInfo?.backupJobInfo?.includes?.objectInJob
 											if(opts.externalId) {
-												def jobObjMor = extractMOR(tmpJobObj.hierarchyObjRef)
-												def jobObjUid = extractVeeamUuid(tmpJobObj.hierarchyObjRef)
+												def jobObjMor = VeeamUtils.extractMOR(tmpJobObj.hierarchyObjRef)
+												def jobObjUid = VeeamUtils.extractVeeamUuid(tmpJobObj.hierarchyObjRef)
 												if(opts.externalId == jobObjMor || opts.externalId.contains(jobObjUid)) {
 													jobObject = tmpJobObj
 												}
@@ -634,7 +614,7 @@ class ApiService {
 											log.debug("FOUND MULTIPLE JOB OBJECTS, FIND THE RIGHT ONE")
 											jobObject = jobResults.job.jobInfo?.backupJobInfo?.includes?.objectInJob?.find {
 												if(opts.externalId) {
-													def itMor = extractMOR(it.hierarchyObjRef)
+													def itMor = VeeamUtils.extractMOR(it.hierarchyObjRef)
 													return opts.externalId == itMor
 												} else {
 													return vmName == it.name
@@ -710,7 +690,7 @@ class ApiService {
 					log.debug("backup job task results: ${taskResults}")
 					def jobSessionLink = taskResults.links.find { it.type == "BackupJobSession"}?.href
 					if(jobSessionLink) {
-						rtn.backupSessionId = extractVeeamUuid(jobSessionLink)
+						rtn.backupSessionId = VeeamUtils.extractVeeamUuid(jobSessionLink)
 					} else {
 						if(jobStartDate instanceof String) {
 							def tmpJobStartDate = DateUtility.parseDate(jobStartDate)
@@ -779,7 +759,7 @@ class ApiService {
 					log.debug("quick backup task results: ${taskResults}")
 					def jobSessionLink = taskResults.links.find { it.type == "BackupJobSession"}?.href
 					if(jobSessionLink) {
-						rtn.backupSessionId = extractVeeamUuid(jobSessionLink)
+						rtn.backupSessionId = VeeamUtils.extractVeeamUuid(jobSessionLink)
 						rtn.startDate = backupStartDate
 					} else {
 						rtn.success = false
@@ -835,7 +815,7 @@ class ApiService {
 					log.debug("veeamzip task results: ${taskResults}")
 					def jobSessionLink = taskResults.links.find { it.type == "BackupJobSession"}?.href
 					if(jobSessionLink) {
-						rtn.backupSessionId = extractVeeamUuid(jobSessionLink)
+						rtn.backupSessionId = VeeamUtils.extractVeeamUuid(jobSessionLink)
 						rtn.startDate = backupStartDate
 					} else {
 						rtn.success = false
@@ -994,7 +974,7 @@ class ApiService {
 		log.debug "getLastBackupResult: ${backupJobId}"
 		def rtn = [success:false]
 		def backupResult
-		def backupJobUid = "urn:veeam:Job:${extractVeeamUuid(backupJobId)}"
+		def backupJobUid = "urn:veeam:Job:${VeeamUtils.extractVeeamUuid(backupJobId)}"
 		//get hiearchy	 root for the VM cloud
 		def tokenResults = getToken(authConfig)
 		if(tokenResults.success == true) {
@@ -1285,14 +1265,14 @@ class ApiService {
 			log.debug("Performing restore with endpoint: ${restoreLink}")
 			def xml
 			if(opts.cloudTypeCode == 'vcd' && opts.backupType != "veeamzip") {
-				def restorePointUid = extractVeeamUuid(restoreLink)
-				def hierarchyRootUid = extractVeeamUuid(opts.hierarchyRoot)
+				def restorePointUid = VeeamUtils.extractVeeamUuid(restoreLink)
+				def hierarchyRootUid = VeeamUtils.extractVeeamUuid(opts.hierarchyRoot)
 				xml = new StreamingMarkupBuilder().bind() {
 					RestoreSpec("xmlns": "http://www.veeam.com/ent/v1.0", "xmlns:xsd": "http://www.w3.org/2001/XMLSchema", "xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance") {
 						vCloudVmRestoreSpec() {
 							"PowerOnAfterRestore"(true)
 							"HierarchyRootUid"(hierarchyRootUid)
-							vAppRef("urn:${CLOUD_TYPE_VCD}:Vapp:${hierarchyRootUid}.urn:vcloud:vapp:${opts.vAppId}")
+							vAppRef("urn:${VeeamUtils.CLOUD_TYPE_VCD}:Vapp:${hierarchyRootUid}.urn:vcloud:vapp:${opts.vAppId}")
 							VmRestoreParameters() {
 								VmRestorePointUid("urn:veeam:VmRestorePoint:${restorePointUid}")
 							}
@@ -1393,7 +1373,7 @@ class ApiService {
 	static getVmId(url, token, cloudType, hierarchyRoot, vmRefId) {
 		def rtn = [success:false]
 		//construct the object ref
-		def vmId = getVmHierarchyObjRef(vmRefId, hierarchyRoot, cloudType)
+		def vmId = VeeamUtils.getVmHierarchyObjRef(vmRefId, hierarchyRoot, cloudType)
 		def headers = buildHeaders([:], token)
 		def query = [hierarchyRef: vmId]
 		HttpApiClient httpApiClient = new HttpApiClient()
@@ -1406,47 +1386,6 @@ class ApiService {
 			rtn.vmId = results.data.HierarchyItem.ObjectRef.toString()
 			rtn.vmName = results.data.HierarchyItem.ObjectName.toString()
 		}
-		return rtn
-	}
-
-	static getVmHierarchyObjRef(vmRefId, managedServerId, cloudType) {
-		def parentServerId = managedServerId
-		if(managedServerId.contains("urn:veeam")) {
-			parentServerId = extractVeeamUuid(managedServerId)
-		}
-		def rtn = "urn:${cloudType}:"
-		rtn += cloudType == CLOUD_TYPE_VCD ? "Vapp" : "Vm"
-		rtn += ":${parentServerId}.${vmRefId}"
-
-		return rtn
-	}
-
-	static getCloudTypeFromZoneType(String cloudTypeCode) {
-		def rtn
-
-		if (cloudTypeCode == 'hyperv' || cloudTypeCode == 'scvmm') {
-			rtn = CLOUD_TYPE_HYPERV
-		} else if (cloudTypeCode == 'vmware') {
-			rtn = CLOUD_TYPE_VMWARE
-		} else if(cloudTypeCode == 'vcd') {
-			rtn = CLOUD_TYPE_VCD
-		}
-
-		return rtn
-	}
-
-	static getManagedServerTypeFromZoneType(String cloudTypeCode) {
-		def rtn = cloudTypeCode == 'vmware' ? 'VC' : 'HV'
-		if(cloudTypeCode == 'hyperv') {
-			rtn = MANAGED_SERVER_TYPE_HYPERV
-		} else if(cloudTypeCode == 'vmware') {
-			rtn = MANAGED_SERVER_TYPE_VCENTER
-		} else if(cloudTypeCode == 'scvmm') {
-			rtn = MANAGED_SERVER_TYPE_SCVMM
-		} else if(cloudTypeCode == 'vcd') {
-			rtn = MANAGED_SERVER_TYPE_VCD
-		}
-
 		return rtn
 	}
 
@@ -1527,115 +1466,21 @@ class ApiService {
 		return rtn
 	}
 
-	static dayOfWeekList = [
-			[index:1, name:'Sunday'],
-			[index:2, name:'Monday'],
-			[index:3, name:'Tuesday'],
-			[index:4, name:'Wednesday'],
-			[index:5, name:'Thursday'],
-			[index:6, name:'Friday'],
-			[index:7, name:'Saturday']
-	]
-
-	static monthList = [
-			[index:1, name:'January'],
-			[index:2, name:'February'],
-			[index:3, name:'March'],
-			[index:4, name:'April'],
-			[index:5, name:'May'],
-			[index:6, name:'June'],
-			[index:7, name:'July'],
-			[index:8, name:'August'],
-			[index:9, name:'September'],
-			[index:10, name:'October'],
-			[index:11, name:'November'],
-			[index:12, name:'December']
-	]
-
-	//scheduling
-	static decodeScheduling(job) {
-		def rtn
-		//build a cron representation
-		def scheduleSet = job.ScheduleConfigured
-		def scheduleOn = job.ScheduleEnabled
-		def optionsDaily = job.JobScheduleOptions?.OptionsDaily
-		def optionsMonthly = job.JobScheduleOptions?.OptionsMonthly
-		def optionsPeriodically = job.JobScheduleOptions?.OptionsPeriodically
-		//build cron off the type
-		if(optionsDaily['@Enabled'] == 'true') {
-			//get the hour offset
-			def timeOffset = optionsDaily.TimeOffsetUtc?.toLong()
-			def hour = ((int)(timeOffset.div(3600l)))
-			def minute = ((int)((timeOffset - (hour * 3600l)).div(60)))
-			//build the string
-			rtn = '0 ' + minute + ' ' + hour
-			//get the days of the week
-			if(optionsDaily.Kind == 'Everyday') {
-				rtn = rtn + ' 	* * ?'
-			} else {
-				def dayList = []
-				dayOfWeekList?.each { day ->
-					if(optionsDaily.Days.find{ it.toString() == day.name }) {
-						dayList << day.index
-					}
-				}
-				rtn = rtn + ' ? * ' + dayList.join(',')
-			}
-		} else if(optionsMonthly['@Enabled'] == 'true') {
-			def timeOffset = optionsMonthly.TimeOffsetUtc?.toLong()
-			def hour = ((int)(timeOffset.div(3600l)))
-			def minute = ((int)((timeOffset - (hour * 3600l)).div(60)))
-			def day = optionsMonthly.DayOfMonth
-			//cron can't handle the other style - fourth saturday of month
-			//build the string
-			rtn = '0 ' + minute + ' ' + hour + ' ' + day
-			//get the days of the month
-			def months = []
-			monthList?.each { month ->
-				if(optionsMonthly.Months.find { it.toString() == month.name })
-					months << month.index
-			}
-			if(months?.size() == 12) {
-				rtn = rtn + ' ' + '*'
-			} else {
-				rtn = rtn + ' ' + months.join(',')
-			}
-			rtn + ' ?'
-		} else if(optionsPeriodically['@Enabled']== 'true') {
-			//add continuously support
-			def hour = optionsPeriodically.FullPeriod
-			//build the string
-			rtn = '0 0 ' + hour + ' * * ?'
+	static buildHeaders(Map headers, String token, Map opts=[:]) {
+		def rtn = [:]
+		if(token) {
+			rtn.'X-RestSvcSessionId' = token
 		}
-		return rtn
+		if(opts.format == 'json') {
+			rtn.Accept = 'application/json'
+		} else {
+			rtn.Accept = 'application/xml'
+		}
+
+		return rtn + headers
 	}
 
-	static extractVeeamUuid(String url) {
-		def rtn = url
-		def lastSlash = rtn?.lastIndexOf('/')
-		if(lastSlash > -1)
-			rtn = rtn.substring(lastSlash + 1)
-		def lastQuestion = rtn?.lastIndexOf('?')
-		if(lastQuestion > -1)
-			rtn = rtn.substring(0, lastQuestion)
-		def lastColon = rtn?.lastIndexOf(':')
-		if(lastColon > -1)
-			rtn = rtn.substring(lastColon + 1)
-		return rtn
-	}
-
-	static extractMOR(String uuid) {
-		def rtn = uuid
-		def lastPeriod = rtn?.lastIndexOf('.')
-		if(lastPeriod > -1)
-			rtn = rtn.substring(lastPeriod + 1)
-		def lastQuestion = rtn?.lastIndexOf('?')
-		if(lastQuestion > -1)
-			rtn = rtn.substring(0, lastQuestion)
-
-		return rtn
-	}
-
+	// XML Utils
 	static xmlToMap(String xml, Boolean camelCase = false) {
 		def rtn = xml ? xmlToMap(new groovy.util.XmlSlurper().parseText(xml), camelCase) : [:]
 	}

@@ -65,7 +65,7 @@ class VeeamBackupJobProvider implements BackupJobProvider {
 		try {
 			def backupProvider = sourceBackupJobModel.backupProvider
 			def authConfig = apiService.getAuthConfig(backupProvider)
-			def cloneId = apiService.extractVeeamUuid(sourceBackupJobModel.externalId)
+			def cloneId = VeeamUtils.extractVeeamUuid(sourceBackupJobModel.externalId)
 			def jobName = "${backupJobModel.name}-${backupJobModel.account.id}"
 			//make api call
 			def apiOpts = [jobName:jobName, repositoryId:backupJobModel.backupRepository?.internalId]
@@ -99,7 +99,7 @@ class VeeamBackupJobProvider implements BackupJobProvider {
 		log.debug("deleteBackupJob: {}, {}", backupJobModel, opts)
 		ServiceResponse rtn = ServiceResponse.prepare()
 		try {
-			def backupJobId = apiService.extractVeeamUuid(backupJobModel?.externalId)
+			def backupJobId = VeeamUtils.extractVeeamUuid(backupJobModel?.externalId)
 			if(!backupJobId) {
 				// no external ID just delete it.
 				rtn.success = true
