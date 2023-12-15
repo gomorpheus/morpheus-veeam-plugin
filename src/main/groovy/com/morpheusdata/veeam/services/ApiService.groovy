@@ -1378,13 +1378,39 @@ class ApiService {
 		def query = [hierarchyRef: vmId]
 		HttpApiClient httpApiClient = new HttpApiClient()
 		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
-		def results = httpApiClient.callXmlApi(url, "/api/lookup", null, null, requestOpts, 'GET')
+		def results = httpApiClient.callXmlApi(url, "/api/lookup", requestOpts, 'GET')
 		log.debug("got: ${results}")
 		rtn.success = results?.success
 		if(rtn.success == true) {
 			def response = new groovy.util.XmlSlurper().parseText(results.content)
 			rtn.vmId = results.data.HierarchyItem.ObjectRef.toString()
 			rtn.vmName = results.data.HierarchyItem.ObjectName.toString()
+		}
+		return rtn
+	}
+
+	static fetchQuery(Map authConfig, String objType, Map filters, Boolean entityFormat=false, Map opts=[:]) {
+		def rtn = [success:false]
+		def apiPath = authConfig.basePath + '/query'
+		def apiUrl = authConfig.apiUrl
+		def headers = buildHeaders([:], authConfig.token)
+		def query = [type: objType, filter:""]
+		if(entityFormat) {
+			query.format = 'entities'
+		}
+		for(filter in filters) {
+			if(query.filter.size() > 0) {
+				query.filter += "&"
+			}
+			query.filter += "${filter.key}==\"${filter.value}\""
+		}
+
+		HttpApiClient httpApiClient = new HttpApiClient()
+		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
+		rtn = httpApiClient.callXmlApi(apiUrl, apiPath, requestOpts, 'GET')
+		log.debug("fetchQuery results: ${rtn}")
+		if(rtn.success) {
+			rtn.data = xmlToMap(rtn.content, true)
 		}
 		return rtn
 	}
