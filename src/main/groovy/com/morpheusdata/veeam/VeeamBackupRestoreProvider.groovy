@@ -173,9 +173,9 @@ class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 		log.info("Restoring backupResult {} - opts: {}", backupResult, opts)
 		try {
 			def containerId = opts.containerId ?: backup?.containerId
-			Workload workload = containerId ? morpheus.services.workload.get(containerId) : null
-			ComputeServer server = workload?.server?.id ? morpheus.services.computeServer.get(workload.server.id) : null
-			Cloud cloud = server.cloud.id ? morpheus.services.cloud.get(server.cloud.id) : null
+			Workload workload = containerId ? morpheus.services.workload.find(new DataQuery().withFilter("id", containerId).withJoins("server", "server.zone", "server.zone.zoneType")) : null
+			ComputeServer server = workload?.server
+			Cloud cloud = server.cloud
 			def objectRef = VeeamUtils.getVmHierarchyObjRef(backup, server)
 			def authConfig = apiService.getAuthConfig(backup.backupProvider)
 			def tokenResults = apiService.getToken(authConfig)
@@ -224,10 +224,12 @@ class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 				backupRestore.status = 'IN_PROGRESS'
 				backupRestore.externalStatusRef = restoreResults.restoreSessionId
 				backupRestore.containerId = workload.id
+				rtn.data.updates = true
 				rtn.success = true
 			} else {
 				backupRestore.status = 'FAILED'
 				backupRestore.errorMessage = restoreResults.msg
+				rtn.data.updates = true
 
 				if(workload.instance?.id) {
 					def instance = morpheus.services.instance.get(workload.instance.id)
@@ -273,6 +275,10 @@ class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 			def token = session.token
 			def sessionId = session.sessionId
 			def restoreSessionId = backupRestore.externalStatusRef
+			if(!restoreSessionId) {
+				rtn.msg = "No restore session provided"
+				return rtn
+			}
 			def result = apiService.getRestoreResult(apiUrl, token, restoreSessionId)
 			def restoreSession = result.result
 			apiService.logoutSession(apiUrl, token, sessionId)
@@ -312,7 +318,7 @@ class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 		try {
 			// Need to update the externalId as it has changed
 			def targetWorkload = morpheus.services.workload.get(restore.containerId)
-			def server = targetWorkload?.server
+			// def server = targetWorkload?.server
 
 			morpheus.async.backup.backupRestore.finalizeRestore(targetWorkload)
 

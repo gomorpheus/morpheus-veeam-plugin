@@ -5,6 +5,7 @@ import com.morpheusdata.core.util.HttpApiClient
 import com.morpheusdata.model.BackupProvider
 import com.morpheusdata.veeam.utils.VeeamUtils
 import com.morpheusdata.veeam.utils.VeeamScheduleUtils
+import com.morpheusdata.veeam.utils.XmlUtils
 import groovy.util.logging.Slf4j
 import groovy.xml.StreamingMarkupBuilder
 
@@ -114,11 +115,12 @@ class ApiService {
 			def headers = buildHeaders([:], tokenResults.token)
 			HttpApiClient httpApiClient = new HttpApiClient()
 			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers)
-			def results = httpApiClient.callXmlApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'GET')
+			def results = httpApiClient.callXmlApi(authConfig.apiUrl, apiPath, requestOpts, 'GET')
+			log.debug("Supported API Versions results: ${results}")
 			if(results.success == true) {
 				results.data.SupportedVersions.SupportedVersion.each { supportedVersion ->
 					log.debug("Veeam support API versions: ${supportedVersion}")
-					def row = xmlToMap(supportedVersion, true)
+					def row = XmlUtils.xmlToMap(supportedVersion, true)
 					row.version = row.name?.replace('v', '')?.replace('_', '.')?.toFloat()
 					rtn.data << row
 				}
@@ -168,7 +170,7 @@ class ApiService {
 				if(results.success == true) {
 					//iterate results
 					results.data.Job?.each { job ->
-						def row = xmlToMap(job, true)
+						def row = XmlUtils.xmlToMap(job, true)
 						row.externalId = row.uid
 						row.scheduleCron = VeeamScheduleUtils.decodeScheduling(job)
 
@@ -212,7 +214,7 @@ class ApiService {
 				def results = httpApiClient.callXmlApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'GET')
 				if(results.success == true) {
 					results.data.ManagedServer?.each { managedServer ->
-						def row = xmlToMap(managedServer, true)
+						def row = XmlUtils.xmlToMap(managedServer, true)
 						row.externalId = row.uid
 						rtn.managedServers << row
 					}
@@ -293,7 +295,7 @@ class ApiService {
 				if(results.success == true) {
 					//iterate results
 					results.data.BackupServer?.each { backupServer ->
-						def row = xmlToMap(backupServer, true)
+						def row = XmlUtils.xmlToMap(backupServer, true)
 						row.externalId = row.uid
 						rtn.backupServers << row
 					}
@@ -329,7 +331,7 @@ class ApiService {
 			def results = httpApiClient.callXmlApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'GET')
 			if(results.success == true) {
 				rtn.data = results.data
-				rtn.job = xmlToMap(results.data, true)
+				rtn.job = XmlUtils.xmlToMap(results.data, true)
 				rtn.success = true
 			}
 		} else {
@@ -357,7 +359,7 @@ class ApiService {
 				if(results.success == true) {
 					//iterate results
 					results.data.Repository?.each { repository ->
-						def row = xmlToMap(repository, true)
+						def row = XmlUtils.xmlToMap(repository, true)
 						row.externalId = row.uid
 						rtn.repositories << row
 					}
@@ -680,7 +682,7 @@ class ApiService {
 			def jobStartDate = results.headers.Date
 			rtn.success = results?.success
 			if (results?.success == true) {
-				def response = xmlToMap(results.data, true)
+				def response = XmlUtils.xmlToMap(results.data, true)
 				taskId = response.taskId
 			}
 			if (taskId) {
@@ -702,7 +704,7 @@ class ApiService {
 					}
 				} else{
 					rtn.success = false
-					def resultData = xmlToMap(taskResults.data, true)
+					def resultData = XmlUtils.xmlToMap(taskResults.data, true)
 					rtn.errorMsg = resultData.result.message
 				}
 			}
@@ -723,6 +725,8 @@ class ApiService {
 		if(results?.success == true) {
 			def response = new groovy.util.XmlSlurper().parseText(results.content)
 			rtn.taskId = response.TaskId.toString()
+		} else if(results?.errorCode == 404) {
+			rtn.success = true
 		}
 		return rtn
 	}
@@ -749,7 +753,7 @@ class ApiService {
 			def backupStartDate = results.headers.Date
 			rtn.success = results?.success
 			if (results?.success == true) {
-				def response = xmlToMap(results.data, true)
+				def response = XmlUtils.xmlToMap(results.data, true)
 				taskId = response.taskId
 			}
 			if (taskId) {
@@ -768,7 +772,7 @@ class ApiService {
 				} else{
 					rtn.success = false
 					rtn.status = "FAILED"
-					def resultData = xmlToMap(taskResults.data, true)
+					def resultData = XmlUtils.xmlToMap(taskResults.data, true)
 					rtn.errorMsg = resultData.result.message
 				}
 			}
@@ -805,7 +809,7 @@ class ApiService {
 			def backupStartDate = results.headers.Date
 			rtn.success = results?.success
 			if (results?.success == true) {
-				def response = xmlToMap(results.data, true)
+				def response = XmlUtils.xmlToMap(results.data, true)
 				taskId = response.taskId
 			}
 			if (taskId) {
@@ -824,7 +828,7 @@ class ApiService {
 				} else{
 					rtn.success = false
 					rtn.status = "FAILED"
-					def resultData = xmlToMap(taskResults.data, true)
+					def resultData = XmlUtils.xmlToMap(taskResults.data, true)
 					rtn.errorMsg = resultData.result.message
 				}
 			}
@@ -995,7 +999,7 @@ class ApiService {
 				def results = httpApiClient.callXmlApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'GET')
 				rtn.success = results?.success
 				if(rtn.success == true) {
-					response = xmlToMap(results.data, true)
+					response = XmlUtils.xmlToMap(results.data, true)
 					if(response.entities.backupJobSessions?.size() > 0) {
 						def tmpJobSession = response.entities.backupJobSessions.backupJobSession
 						def tmpJobSessionUid = tmpJobSession.uid
@@ -1031,6 +1035,18 @@ class ApiService {
 		return rtn
 	}
 
+	static getBackupSessionTaskSessions(String url, String token, String backupSessionId) {
+		def rtn = [success:false]
+		String apiPath = "/api/backupSessions/${backupSessionId}/taskSessions"
+		Map headers = buildJsonHeaders([:], token)
+		Map query = [format: "Entity"]
+		HttpApiClient httpApiClient = new HttpApiClient()
+		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
+		rtn = httpApiClient.callJsonApi(url, apiPath, requestOpts, 'GET')
+
+		return rtn
+	}
+
 	static getRestorePoint(Map authConfig, String objectRef, Map opts=[:]) {
 		log.debug "getLatestRestorePoint: ${objectRef}"
 		def rtn = [success:false, data: [:]]
@@ -1041,7 +1057,7 @@ class ApiService {
 			if(opts.startRefDateStr) {
 				queryFilter += ";CreationTime>=\"${opts.startRefDateStr}\""
 			}
-			def query = [type: 'VmRestorePoint', filter: queryFilter, format: 'Entities', sortDesc: 'CreationTime', pageSize: 1 ]
+			def query = [type: 'VmRestorePoint', filter: queryFilter, format: 'Entities', sortDesc: 'CreationTime', pageSize: "1" ]
 
 			def attempt = 0
 			def keepGoing = true
@@ -1119,6 +1135,7 @@ class ApiService {
 	}
 
 	static restoreVM(url, token, objectRef, backupSessionId, opts=[:]) {
+		log.debug("restoreVM: ${url}, ${objectRef}, ${backupSessionId}, ${opts}")
 		def rtn = [success:false]
 		def headers = buildHeaders([:], token)
 		def query = [format: "Entity"]
@@ -1184,11 +1201,14 @@ class ApiService {
 			HttpApiClient httpApiClient = new HttpApiClient()
 			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 			def results = httpApiClient.callXmlApi(url, "/api/backupSessions/${backupSessionId}", null, null, requestOpts, 'GET')
+
+			log.debug("backupSession results: ${results}")
 			//find restore points
 			def restorePointsLink
 			rtn.success = results?.success
 			if(rtn.success == true) {
 				def response = new groovy.util.XmlSlurper().parseText(results.content)
+				log.debug("backup results retore links: ${response.Links.Link}")
 				response.Links.Link.each { link ->
 					if(link['@Type'] == "RestorePointReference") {
 						def restorePointsUrl = new URI(link['@Href'].toString())
@@ -1204,18 +1224,18 @@ class ApiService {
 
 			// probably a veeamzip, need to go find the restore point for the backup session
 			if(!restorePointsLink) {
-				def response = xmlToMap(results.content, true)
+				def response = XmlUtils.xmlToMap(results.content, true)
 				def backupName = response.jobName // the backup session and the backup(result) should have the same name
 				def backupResults = fetchQuery(opts.authConfig, "Backup", [Name: backupName])
 				def restoreRefList = backupResults.data.refs?.ref?.links?.link?.find { it.type == "RestorePointReferenceList" }
 				// get a list of restore points from the backup
 				def refListLink = new URI(restoreRefList.href)
 				requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
-				def refListResults = httpApiClient.callXmlApi(url, null, null, refListLink.path,requestOpts, 'GET')
+				def refListResults = httpApiClient.callXmlApi(url, refListLink.path, requestOpts, 'GET')
 				rtn.success = refListResults?.success
 				if(rtn.success == true) {
 					// we need the vm restore point to execute the restore
-					def refListResponse = xmlToMap(refListResults.content)
+					def refListResponse = XmlUtils.xmlToMap(refListResults.content)
 					refListResponse.RestorePoint.Links.Link.each { link ->
 						if(link['Type'] == "VmRestorePointReferenceList") {
 							def restoreUrl = new URI(link['Href']?.toString())
@@ -1228,7 +1248,7 @@ class ApiService {
 
 			if(restorePointsLink) {
 				requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
-				def restoreLinkResults = httpApiClient.callXmlApi(url, "${restorePointsLink}", null, null, requestOpts, 'GET')
+				def restoreLinkResults = httpApiClient.callXmlApi(url, "${restorePointsLink}", requestOpts, 'GET')
 				log.debug("got: ${results}")
 				rtn.success = results?.success
 				if(rtn.success == true) {
@@ -1293,8 +1313,8 @@ class ApiService {
 			log.debug "body: ${body}"
 			def restoreQuery = query + [action: 'restore']
 			HttpApiClient httpApiClient = new HttpApiClient()
-			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, query:restoreQuery, body: body)
-			def results = httpApiClient.callXmlApi(url, restoreLink, null, null, requestOpts, 'POST')
+			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams:restoreQuery, body: body)
+			def results = httpApiClient.callXmlApi(url, restoreLink, requestOpts, 'POST')
 			rtn.success = results?.success
 			if(rtn.success == true) {
 				def response = new groovy.util.XmlSlurper().parseText(results.content)
@@ -1410,7 +1430,7 @@ class ApiService {
 		rtn = httpApiClient.callXmlApi(apiUrl, apiPath, requestOpts, 'GET')
 		log.debug("fetchQuery results: ${rtn}")
 		if(rtn.success) {
-			rtn.data = xmlToMap(rtn.content, true)
+			rtn.data = XmlUtils.xmlToMap(rtn.content, true)
 		}
 		return rtn
 	}
@@ -1502,119 +1522,13 @@ class ApiService {
 		} else {
 			rtn.Accept = 'application/xml'
 		}
+		// retain veeam 11 API functionality
+		rtn.'x-api-version' = '1.0-rev2'
 
 		return rtn + headers
 	}
 
-	// XML Utils
-	static xmlToMap(String xml, Boolean camelCase = false) {
-		def rtn = xml ? xmlToMap(new groovy.util.XmlSlurper().parseText(xml), camelCase) : [:]
+	static buildJsonHeaders(Map headers, String token, Map opts=[:]) {
+		buildHeaders(headers, token, opts + [format: 'json'])
 	}
-
-	static xmlToMap(groovy.util.slurpersupport.NodeChild node, Boolean camelCase = false) {
-		def rtn = [:]
-		def children = node?.children()
-		def attributeMap = node?.attributes()
-		if(children) {
-			children.each { child ->
-				//node name
-				def childName = child.name()
-				if(camelCase == true)
-					childName = getCamelKeyName(childName)
-				//get value
-				def childAttributeMap = child.attributes()
-				if(child.childNodes()) {
-					def childResult = xmlToMap(child, camelCase)
-					setMapXmlValue(rtn, childName, childResult, null)
-					//has sub stuff
-				} else if(childAttributeMap?.size() > 0) {
-					if(camelCase == true) {
-						def cloneMap = [:]
-						childAttributeMap.each { key, value ->
-							def keyName = getCamelKeyName(key)
-							cloneMap[keyName] = value
-						}
-						setMapXmlValue(rtn, childName, cloneMap, child.text())
-					} else {
-						setMapXmlValue(rtn, childName, childAttributeMap, child.text())
-					}
-				} else {
-					//just plain old value
-					setMapXmlValue(rtn, childName, child.text(), null)
-				}
-			}
-		}
-		//attributes
-		if(attributeMap?.size() > 0) {
-			if(camelCase == true) {
-				def cloneMap = [:]
-				attributeMap.each { key, value ->
-					def keyName = getCamelKeyName(key)
-					cloneMap[keyName] = value
-					rtn += cloneMap
-				}
-			} else {
-				rtn += attributeMap
-			}
-		}
-		return rtn
-	}
-
-	static getCamelKeyName(String key) {
-		def rtn
-		if(key == 'UID')
-			rtn = 'uid'
-		else if(key == 'ID')
-			rtn = 'id'
-		else
-			rtn = lowerCamelCase(key)
-		//return
-		return rtn
-	}
-
-	static setMapXmlValue(Map target, String name, Object value, Object extraValue) {
-		def current = target[name]
-		if(current == null) {
-			target[name] = value
-			if(extraValue)
-				value.value = extraValue
-		} else {
-			if(!(current instanceof List)) {
-				target[name] = []
-				target[name] << current
-			}
-			target[name] << value
-			if(extraValue)
-				value.value = extraValue
-		}
-	}
-
-	private static lowerCamelCase( String lowerCaseAndUnderscoredWord) {
-		return camelCase(lowerCaseAndUnderscoredWord,false);
-	}
-
-	private static camelCase( String lowerCaseAndUnderscoredWord, boolean uppercaseFirstLetter) {
-		if (lowerCaseAndUnderscoredWord == null) return null;
-		lowerCaseAndUnderscoredWord = lowerCaseAndUnderscoredWord.trim();
-		if (lowerCaseAndUnderscoredWord.length() == 0) return "";
-		if (uppercaseFirstLetter) {
-			String result = lowerCaseAndUnderscoredWord;
-			// Change the case at the beginning at after each underscore ...
-			return replaceAllWithUppercase(result, "(^|_)(.)", 2);
-		}
-		if (lowerCaseAndUnderscoredWord.length() < 2) return lowerCaseAndUnderscoredWord;
-		return "" + Character.toLowerCase(lowerCaseAndUnderscoredWord.charAt(0)) + camelCase(lowerCaseAndUnderscoredWord, true).substring(1);
-	}
-
-	private static String replaceAllWithUppercase( String input, String regex, int groupNumberToUppercase ) {
-		Pattern underscoreAndDotPattern = Pattern.compile(regex);
-		Matcher matcher = underscoreAndDotPattern.matcher(input);
-		StringBuffer sb = new StringBuffer();
-		while (matcher.find()) {
-			matcher.appendReplacement(sb, matcher.group(groupNumberToUppercase).toUpperCase());
-		}
-		matcher.appendTail(sb);
-		return sb.toString();
-	}
-
 }

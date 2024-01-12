@@ -5,10 +5,12 @@ import com.morpheusdata.model.BackupProvider
 import com.morpheusdata.model.BackupResult
 import com.morpheusdata.model.ComputeServer
 import com.morpheusdata.model.Workload
+import groovy.util.logging.Slf4j
 
+@Slf4j
 class VeeamUtils {
 
-	static CLOUD_TYPE_VMWARE = "VMWare"
+	static CLOUD_TYPE_VMWARE = "VMware"
 	static CLOUD_TYPE_HYPERV = "HyperV"
 	static CLOUD_TYPE_SCVMM = "Scvmm"
 	static CLOUD_TYPE_VCD = "vCloud"
@@ -19,6 +21,7 @@ class VeeamUtils {
 	static MANAGED_SERVER_TYPE_VCD = "VcdSystem"
 
 	static getBackupStatus(backupSessionState) {
+		log.debug("getBackupStatus: ${backupSessionState}")
 		def status = BackupResult.Status.IN_PROGRESS.toString()
 		if(backupSessionState == "Failed") {
 			status = BackupResult.Status.FAILED.toString()
@@ -99,8 +102,9 @@ class VeeamUtils {
 		if(!objRef) {
 			def hierarchyRootUid = backup.getConfigProperty("veeamHierarchyRootUid")
 			def managedServerId = hierarchyRootUid ? hierarchyRootUid : backup.getConfigProperty("veeamManagedServerId")?.split(":")?.getAt(0)
+			log.debug("server: ${server}, cloud: ${server?.cloud}, cloudType: ${server?.cloud?.cloudType}, cloudId: ${server?.cloud?.id}}")
 			if(server) {
-				def cloudType = getCloudTypeFromZoneType(server.cloud.cloudType)
+				def cloudType = getCloudTypeFromZoneType(server.cloud.cloudType.code)
 				objRef = getVmHierarchyObjRef(server.externalId, managedServerId, cloudType)
 			}
 		}
@@ -122,6 +126,7 @@ class VeeamUtils {
 	}
 
 	static getCloudTypeFromZoneType(String cloudTypeCode) {
+		log.debug("getCloudTypeFromZoneType: ${cloudTypeCode}")
 		def rtn
 
 		if (cloudTypeCode == 'hyperv' || cloudTypeCode == 'scvmm') {

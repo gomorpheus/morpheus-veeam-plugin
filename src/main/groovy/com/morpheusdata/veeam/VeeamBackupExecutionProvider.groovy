@@ -383,10 +383,19 @@ class VeeamBackupExecutionProvider implements BackupExecutionProvider {
 						def vmIdResults
 						if(vmRefId) {
 							vmIdResults = apiService.lookupVm(authConfig.apiUrl, token, opts.cloudType, hierarchyRoot, vmRefId)
-							vmId = vmIdResults.vmId
+							if(vmIdResults.vmId) {
+                            	// vmId = vmIdResults.vmId
+                            	// a change was introduced in veeam 12 where the wrong hierachy root id is return, just use the compile the
+                            	// obj ref from the hierarchy root and the vm id
+								vmId = VeeamUtils.getVmHierarchyObjRef(vmRefId, hierarchyRoot, opts.cloudType)
+							}
 						} else { //no vmRefId, lookup by name
 							vmIdResults = apiService.lookupVmByName(authConfig.apiUrl, token, hierarchyRoot, vmName)
 							vmId = vmIdResults.vmId
+							if(vmId.contains(VeeamUtils.extractVeeamUuid(hierarchyRoot)) == false) {
+								vmRefId = vmId.tokenize(".").getAt(-1)
+								vmId = VeeamUtils.getVmHierarchyObjRef(vmRefId, hierarchyRoot, opts.cloudType)
+							}
 						}
 					}
 
@@ -471,14 +480,13 @@ class VeeamBackupExecutionProvider implements BackupExecutionProvider {
 				def sessionId = session.sessionId
 				def apiUrl = authConfig.apiUrl
 				def backupSessionId = backupResult.externalId ?: backupResultConfig.backupSessionId
-				def workload = morpheus.services.workload.get(backup.containerId)
+				Workload workload = morpheus.services.workload.find(new DataQuery().withFilter("id", backup.containerId).withJoins("server", "server.zone", "server.zone.zoneType"))
 				def server = workload?.server
 				log.debug("refreshBackupResult backupSessionId: ${backupSessionId}")
 				if(backupSessionId) {
 					log.info("Fetching veeam info for backup ${backupResult.id} session ${backupSessionId ?: "<No session ID found>"}")
 					def getBackupResult = apiService.getBackupResult(apiUrl, token, backupSessionId)
 					def backupSession = getBackupResult.result
-					apiService.logoutSession(apiUrl, token, sessionId)
 
 					if(backupSession) {
 						boolean doUpdate = false
@@ -514,6 +522,8 @@ class VeeamBackupExecutionProvider implements BackupExecutionProvider {
 
 							if(rtn.data.backupResult.status == BackupResult.Status.SUCCEEDED.toString()) {
 								def restoreLink = backupSession.links.find { ["RestorePointReference", "VmRestorePoint", "vAppRestorePoint"].contains(it.type)  }
+								log.debug("restoreLink: ${restoreLink}")
+								log.debug("backup result session links: ${backupSession.links}")
 								def config = rtn.data.backupResult.getConfigMap()
 								if(restoreLink) {
 									config.restoreLink = restoreLink
@@ -523,16 +533,26 @@ class VeeamBackupExecutionProvider implements BackupExecutionProvider {
 								} else {
 									def objectRef = VeeamUtils.getVmHierarchyObjRef(backupResult.backup, server)
 									def restorePoint = apiService.getRestorePoint(authConfig, objectRef, [startRefDateStr: startDate])
+									log.debug("restorePoint: ${restorePoint}, id: ${restorePoint.data?.externalId}")
 									if(restorePoint.data?.externalId) {
 										config.restorePointRef = restorePoint.data.externalId
 									}
 								}
 								rtn.data.backupResult.setConfigMap(config)
 								doUpdate = true
+							} else if(rtn.data.backupResult.status == BackupResult.Status.FAILED.toString()) {
+								def vmObjRef = VeeamUtils.getVmHierarchyObjRef(backupResult.backup, server)
+								ServiceResponse taskSessionsResponse = apiService.getBackupSessionTaskSessions(apiUrl, token, backupSessionId)
+								Map vmBackupTaskSession = taskSessionsResponse.data.getAt("BackupTaskSessions").find { it.getAt("VmUid").toString() == vmObjRef.toString() }
+								if(vmBackupTaskSession && vmBackupTaskSession.getAt("Reason")) {
+										rtn.data.backupResult.errorOutput = vmBackupTaskSession.getAt("Reason")
+								}
+								doUpdate = true
 							}
 						}
 						rtn.data.updates = doUpdate
 						rtn.success = true
+						apiService.logoutSession(apiUrl, token, sessionId)
 					}
 				} else {
 					rtn.success = true
@@ -593,8 +613,6 @@ class VeeamBackupExecutionProvider implements BackupExecutionProvider {
 	ServiceResponse extractBackup(BackupResult backupResultModel, Map opts) {
 		return ServiceResponse.success()
 	}
-
-
 
 	def findManagedServerVmId(Map authConfig, token, cloudType, BackupProvider backupProvider, vmRefId) {
 		def rtn = [success:true, data:[:]]
