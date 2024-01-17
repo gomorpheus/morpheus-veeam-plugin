@@ -532,7 +532,7 @@ class VeeamBackupExecutionProvider implements BackupExecutionProvider {
 									config.restoreRef = VeeamUtils.extractVeeamUuid(config.restoreHref.toString())
 								} else {
 									def objectRef = VeeamUtils.getVmHierarchyObjRef(backupResult.backup, server)
-									def restorePoint = apiService.getRestorePoint(authConfig, objectRef, [startRefDateStr: startDate])
+									def restorePoint = apiService.getRestorePoint(authConfig, objectRef, [startDate: startDate])
 									log.debug("restorePoint: ${restorePoint}, id: ${restorePoint.data?.externalId}")
 									if(restorePoint.data?.externalId) {
 										config.restorePointRef = restorePoint.data.externalId

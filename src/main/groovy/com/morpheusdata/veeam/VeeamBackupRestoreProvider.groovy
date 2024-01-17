@@ -218,6 +218,8 @@ class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 						morpheus.services.instance.save(instance)
 					}
 				}
+
+				server = morpheus.services.computeServer.get(server.id)
 				server.internalName = infrastructureConfig?.server?.name
 				morpheus.services.computeServer.save(server)
 
@@ -276,7 +278,7 @@ class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 			def sessionId = session.sessionId
 			def restoreSessionId = backupRestore.externalStatusRef
 			if(!restoreSessionId) {
-				rtn.msg = "No restore session provided"
+				rtn.msg = "No restore session found."
 				return rtn
 			}
 			def result = apiService.getRestoreResult(apiUrl, token, restoreSessionId)
@@ -310,6 +312,8 @@ class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 		} catch(Exception ex) {
 			log.error("syncBackupRestoreResult error", ex)
 		}
+
+		return rtn
 	}
 
 	ServiceResponse finalizeRestore(BackupRestore restore) {

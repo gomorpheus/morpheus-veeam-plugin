@@ -913,7 +913,7 @@ class ApiService {
 		def query = [format: "Entity"]
 		HttpApiClient httpApiClient = new HttpApiClient()
 		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
-		def results = httpApiClient.callXmlApi(url, "/api/backupSessions/${backupSessionId}", null, null, requestOpts, 'GET')
+		def results = httpApiClient.callJsonApi(url, "/api/backupSessions/${backupSessionId}", requestOpts, 'GET')
 		log.debug("got: ${results}")
 		rtn.success = results?.success
 		if(results?.success == true) {
@@ -1054,10 +1054,12 @@ class ApiService {
 		if(tokenResults.success == true) {
 			def headers = buildHeaders([:], tokenResults.token)
 			def queryFilter = "HierarchyObjRef==\"${objectRef}\""
-			if(opts.startRefDateStr) {
-				queryFilter += ";CreationTime>=\"${opts.startRefDateStr}\""
+			if(opts.startDate) {
+				def formattedStartDate= DateUtility.formatDate(opts.startDate)
+				queryFilter += ";CreationTime>=\"${formattedStartDate}\""
 			}
-			def query = [type: 'VmRestorePoint', filter: queryFilter, format: 'Entities', sortDesc: 'CreationTime', pageSize: "1" ]
+			log.debug("getRestorePoint queryFilter: ${queryFilter}")
+				def query = [type: 'VmRestorePoint', filter: queryFilter, format: 'Entities', sortDesc: 'CreationTime', pageSize: "1" ]
 
 			def attempt = 0
 			def keepGoing = true
@@ -1200,16 +1202,16 @@ class ApiService {
 		if(!restoreLink) {
 			HttpApiClient httpApiClient = new HttpApiClient()
 			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
-			def results = httpApiClient.callXmlApi(url, "/api/backupSessions/${backupSessionId}", null, null, requestOpts, 'GET')
+			def backupSessionResponse = httpApiClient.callJsonApi(url, "/api/backupSessions/${backupSessionId}", requestOpts, 'GET')
 
-			log.debug("backupSession results: ${results}")
+			log.debug("backupSession results: ${backupSessionResponse}")
 			//find restore points
 			def restorePointsLink
-			rtn.success = results?.success
+			rtn.success = backupSessionResponse?.success
 			if(rtn.success == true) {
-				def response = new groovy.util.XmlSlurper().parseText(results.content)
-				log.debug("backup results retore links: ${response.Links.Link}")
-				response.Links.Link.each { link ->
+				def backupSessionData = backupSessionResponse.data
+				log.debug("backup results retore links: ${backupSessionData.Links.Link}")
+				backupSessionData.Links.Link.each { link ->
 					if(link['@Type'] == "RestorePointReference") {
 						def restorePointsUrl = new URI(link['@Href'].toString())
 						restorePointsLink = "${restorePointsUrl.path}/vmRestorePoints"
@@ -1224,22 +1226,24 @@ class ApiService {
 
 			// probably a veeamzip, need to go find the restore point for the backup session
 			if(!restorePointsLink) {
-				def response = XmlUtils.xmlToMap(results.content, true)
-				def backupName = response.jobName // the backup session and the backup(result) should have the same name
+				def backupSessionData = backupSessionResponse.data
+				def backupName = backupSessionData.jobName // the backup session and the backup(result) should have the same name
 				def backupResults = fetchQuery(opts.authConfig, "Backup", [Name: backupName])
 				def restoreRefList = backupResults.data.refs?.ref?.links?.link?.find { it.type == "RestorePointReferenceList" }
-				// get a list of restore points from the backup
-				def refListLink = new URI(restoreRefList.href)
-				requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
-				def refListResults = httpApiClient.callXmlApi(url, refListLink.path, requestOpts, 'GET')
-				rtn.success = refListResults?.success
-				if(rtn.success == true) {
-					// we need the vm restore point to execute the restore
-					def refListResponse = XmlUtils.xmlToMap(refListResults.content)
-					refListResponse.RestorePoint.Links.Link.each { link ->
-						if(link['Type'] == "VmRestorePointReferenceList") {
-							def restoreUrl = new URI(link['Href']?.toString())
-							restorePointsLink = restoreUrl.path
+				if(restoreRefList) {
+					// get a list of restore points from the backup
+					def refListLink = new URI(restoreRefList.href)
+					requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
+					def refListResults = httpApiClient.callJsonApi(url, refListLink.path, requestOpts, 'GET')
+					rtn.success = refListResults?.success
+					if(rtn.success == true) {
+						// we need the vm restore point to execute the restore
+						def refListResponse = XmlUtils.xmlToMap(refListResults.content)
+						refListResponse.RestorePoint.Links.Link.each { link ->
+							if(link['Type'] == "VmRestorePointReferenceList") {
+								def restoreUrl = new URI(link['Href']?.toString())
+								restorePointsLink = restoreUrl.path
+							}
 						}
 					}
 				}
@@ -1249,8 +1253,8 @@ class ApiService {
 			if(restorePointsLink) {
 				requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 				def restoreLinkResults = httpApiClient.callXmlApi(url, "${restorePointsLink}", requestOpts, 'GET')
-				log.debug("got: ${results}")
-				rtn.success = results?.success
+				log.debug("got: ${backupSessionResponse}")
+				rtn.success = backupSessionResponse?.success
 				if(rtn.success == true) {
 					def response = new groovy.util.XmlSlurper().parseText(restoreLinkResults.content)
 					def restorePoint
@@ -1427,11 +1431,9 @@ class ApiService {
 
 		HttpApiClient httpApiClient = new HttpApiClient()
 		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
-		rtn = httpApiClient.callXmlApi(apiUrl, apiPath, requestOpts, 'GET')
+		rtn = httpApiClient.callJsonApi(apiUrl, apiPath, requestOpts, 'GET')
 		log.debug("fetchQuery results: ${rtn}")
-		if(rtn.success) {
-			rtn.data = XmlUtils.xmlToMap(rtn.content, true)
-		}
+
 		return rtn
 	}
 
