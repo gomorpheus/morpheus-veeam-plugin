@@ -78,6 +78,8 @@ class VeeamBackupJobProvider implements BackupJobProvider {
 				backupJobModel.category = 'veeam.job.' + backupProvider.id
 				backupJobModel.code = backupJobModel.category + '.' + backupJobModel.externalId
 				backupJobModel.cronExpression = cloneResults.scheduleCron
+				// morpheus.services.backup.backupJob.save(backupJobModel)
+				rtn.data = backupJobModel
 				rtn.success = true
 			} else {
 				rtn.success = false
@@ -86,6 +88,8 @@ class VeeamBackupJobProvider implements BackupJobProvider {
 		} catch(e) {
 			log.error("cloneBackupJob error: ${e}", e)
 		}
+
+		log.debug("cloneBackupJob results: {}", rtn)
 		return ServiceResponse.create(rtn)
 	}
 
@@ -134,9 +138,10 @@ class VeeamBackupJobProvider implements BackupJobProvider {
 	@Override
 	ServiceResponse executeBackupJob(BackupJob backupJobModel, Map opts) {
 		log.debug("executeBackupJob: {}, {}", backupJobModel, opts)
-		ServiceResponse<List<BackupExecutionResponse>> rtn = new ServiceResponse<List<BackupExecutionResponse>>()
+		log.debug("backupJobModel.externalId: {}", backupJobModel.backupProvider.enabled)
+		ServiceResponse<List<BackupExecutionResponse>> rtn = ServiceResponse.prepare(new ArrayList<BackupExecutionResponse>())
 		rtn.success = false
-		if(backupJobModel.backupProvider.enabled) {
+		if(backupJobModel.backupProvider.enabled == false) {
 			rtn.msg = 'Veeam backup provider is disabled'
 			return rtn
 		}
@@ -165,30 +170,22 @@ class VeeamBackupJobProvider implements BackupJobProvider {
 				}
 			}
 			jobBackups = jobBackups.sort { it.instanceId }
-
-			// TODO: this should probably be moved into core: backupResult.create(backup: backup, backupJob: backupJobModel)
-			// where the backup service also generates the backup set ID
-			// For each backup associated to the job, save the results of the backup
-			def currInstanceId
-			def backupSetId = VeeamBackupExecutionProvider.generateDateKey(10)
 			for(Backup backup in jobBackups) {
-				if(currInstanceId != backup.instanceId) {
-					currInstanceId = backup.instanceId
-					backupSetId = VeeamBackupExecutionProvider.generateDateKey(10)
-				}
-
 				BackupResult backupResult = new BackupResult(backup: backup)
-				executionProvider.updateBackupResult(backupResult, backup, veeamResult)
-				veeamResult.backupSetId = backupSetId
-				veeamResult.backupType = "default"
-				rtn.data.add(new BackupExecutionResponse(backupResult: backupResult))
+				backupResult.backupType = "default"
+				backupResult.setConfigProperty("backupSessionId", veeamResult.backupSessionId)
+				def executionResponse = new BackupExecutionResponse(backupResult)
+				executionResponse.updates = true
+				log.debug("rtn.data: ${rtn.data}")
+				rtn.data.add(executionResponse)
 			}
 
+			rtn.success = true
 			apiService.logoutSession(authConfig.apiUrl, token, sessionId)
 		} catch(e) {
 			log.error("Failed to execute backup job ${backupJobModel.id}: ${e}", e)
 			rtn.msg = "Failed to execute backup job ${backupJobModel.id}"
 		}
-		rtn
+		return rtn
 	}
 }

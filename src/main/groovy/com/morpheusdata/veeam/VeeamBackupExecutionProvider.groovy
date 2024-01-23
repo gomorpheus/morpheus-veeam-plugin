@@ -349,9 +349,11 @@ class VeeamBackupExecutionProvider implements BackupExecutionProvider {
 				def backupServerId = VeeamUtils.getBackupServerId(backup)
 				log.debug("hierarchyRoot: ${hierarchyRoot} backupServerId: ${backupServerId}")
 				if(hierarchyRoot && backupServerId) {
+					// get hierarchy ref and object ref, this should probably be moved up to creatBackup
 					def vmRefId
 					def vmName = computeServer.name
-					def vmId
+					String veeamObjectRef = backup.getConfigProperty("veeamObjectRef")
+					String veeamHierarchyRef = backup.getConfigProperty("veeamHierarchyRef")
 					def hasFullBackup = false
 
 					def resultCountQuery = new DataQuery().withFilters(
@@ -367,42 +369,47 @@ class VeeamBackupExecutionProvider implements BackupExecutionProvider {
 						opts.cloudType = VeeamUtils.CLOUD_TYPE_VCD
 						def managedServerVmIdResults = findManagedServerVmId(authConfig, token, VeeamUtils.CLOUD_TYPE_VMWARE, backupProvider, computeServer.uniqueId)
 						if(managedServerVmIdResults.success && managedServerVmIdResults.data.vmId) {
-							vmId = managedServerVmIdResults.data.vmId
+							veeamObjectRef = managedServerVmIdResults.data.vmId
 						}
 						vmRefId = null
 					} else if(cloud.cloudType.code == "vmware") {
 						opts.cloudType = VeeamUtils.CLOUD_TYPE_VMWARE
 						vmRefId = computeServer.externalId
 					}
-					log.debug("getting result count for backup ${backup.id} with cloud type ${opts.cloudType} and vmRefId ${vmRefId}")
-					def resultCount = morpheus.services.backup.backupResult.count(resultCountQuery.withFilter("backupType", 'default'))
-					log.debug("Has result count; ${resultCount}")
-					hasFullBackup = (resultCount > 0)
 
-					if(!vmId) {
-						def vmIdResults
-						if(vmRefId) {
-							vmIdResults = apiService.lookupVm(authConfig.apiUrl, token, opts.cloudType, hierarchyRoot, vmRefId)
-							if(vmIdResults.vmId) {
-                            	// vmId = vmIdResults.vmId
-                            	// a change was introduced in veeam 12 where the wrong hierachy root id is return, just use the compile the
-                            	// obj ref from the hierarchy root and the vm id
-								vmId = VeeamUtils.getVmHierarchyObjRef(vmRefId, hierarchyRoot, opts.cloudType)
-							}
-						} else { //no vmRefId, lookup by name
-							vmIdResults = apiService.lookupVmByName(authConfig.apiUrl, token, hierarchyRoot, vmName)
-							vmId = vmIdResults.vmId
-							if(vmId.contains(VeeamUtils.extractVeeamUuid(hierarchyRoot)) == false) {
-								vmRefId = vmId.tokenize(".").getAt(-1)
-								vmId = VeeamUtils.getVmHierarchyObjRef(vmRefId, hierarchyRoot, opts.cloudType)
-							}
+					def doSaveBackup = false
+					if(!veeamHierarchyRef) {
+						veeamHierarchyRef = VeeamUtils.getVmHierarchyObjRef(vmRefId, hierarchyRoot, opts.cloudType)
+						backup.setConfigProperty("veeamHierarchyRef", veeamHierarchyRef)
+						doSaveBackup = true
+					}
+
+					if(!veeamObjectRef) {
+						if(veeamHierarchyRef) {
+							def vmIdResults = apiService.lookupVm(authConfig.apiUrl, token, opts.cloudType, hierarchyRoot, vmRefId)
+							veeamObjectRef = vmIdResults.vmId
+						} else { //no veeamHierarchyRef, lookup by name
+							def vmIdResults = apiService.lookupVmByName(authConfig.apiUrl, token, hierarchyRoot, vmName)
+							veeamObjectRef = vmIdResults.vmId
+						}
+
+						if(veeamObjectRef) {
+							backup.setConfigProperty("veeamObjectRef", veeamObjectRef)
+							doSaveBackup = true
 						}
 					}
 
-					log.debug("executeBackup vmId: ${vmId}")
-					if(vmId) {
-						if(hasFullBackup) {
-							def startResponse = apiService.startQuickBackup(authConfig, backupServerId, vmId, [lastBackupSessionId: lastResult?.getConfigProperty("backupSessionId")])
+					if(doSaveBackup) {
+						backup.save(flush:true)
+					}
+
+					log.debug("executeBackup vmId: ${veeamObjectRef}")
+					if(veeamObjectRef || veeamHierarchyRef) {
+						def resultCount = resultCountQuery.where { backupType == 'default' }.count()
+						hasFullBackup = (resultCount > 0)
+
+						if(hasFullBackup && veeamObjectRef) {
+							def startResponse = apiService.startQuickBackup(authConfig, backupServerId, veeamObjectRef, [lastBackupSessionId: lastResult?.getConfigProperty("backupSessionId")])
 							if(startResponse.success) {
 								rtn.data.backupResult.externalId = startResponse.backupSessionId
 								rtn.data.backupResult.startDate = DateUtility.parseDate(startResponse.startDate as CharSequence)
@@ -416,13 +423,13 @@ class VeeamBackupExecutionProvider implements BackupExecutionProvider {
 								rtn.msg = startResponse.errorMessage ?: startResponse.msg
 								rtn.success = false
 							}
-						} else {
+						} else if(veeamHierarchyRef) {
 							BackupRepository repository = backup.backupRepository
 							if(!repository) {
 								repository = morpheus.services.backupRepository.find(new DataQuery().withFilter("category", "veeam.repository.${backupProvider.id}"))
 							}
 							if(repository) {
-								def startResponse = apiService.startVeeamZip(authConfig, backupServerId, repository.externalId, vmId, [lastBackupSessionId: lastResult?.getConfigProperty("backupSessionId"), vmwToolsInstalled: computeServer.toolsInstalled])
+								def startResponse = apiService.startVeeamZip(authConfig, backupServerId, repository.externalId, veeamObjectRef, [lastBackupSessionId: lastResult?.getConfigProperty("backupSessionId"), vmwToolsInstalled: computeServer.toolsInstalled])
 								if(startResponse.success) {
 									rtn.data.backupResult.externalId = startResponse.backupSessionId
 									rtn.data.backupResult.startDate = DateUtility.parseDate(startResponse.startDate as CharSequence)
@@ -439,6 +446,13 @@ class VeeamBackupExecutionProvider implements BackupExecutionProvider {
 							} else {
 								rtn.msg = "Backup repository not found."
 							}
+						} else {
+							rtn.success = false
+							rtn.data.backupResult.status = BackupResult.Status.FAILED.toString()
+							rtn.data.backupResult.statusMessage = "No hierarchy object ref found."
+							rtn.data.updates = true
+							rtn.msg = rtn.data.backupResult.statusMessage
+							rtn.success = false
 						}
 
 						log.debug("executeBackup result: " + rtn)
@@ -482,6 +496,9 @@ class VeeamBackupExecutionProvider implements BackupExecutionProvider {
 				def backupSessionId = backupResult.externalId ?: backupResultConfig.backupSessionId
 				Workload workload = morpheus.services.workload.find(new DataQuery().withFilter("id", backup.containerId).withJoins("server", "server.zone", "server.zone.zoneType"))
 				def server = workload?.server
+				def cloud = server.cloud
+				def cloudType = VeeamUtils.getCloudTypeFromZoneType(cloud.cloudType.code)
+
 				log.debug("refreshBackupResult backupSessionId: ${backupSessionId}")
 				if(backupSessionId) {
 					log.info("Fetching veeam info for backup ${backupResult.id} session ${backupSessionId ?: "<No session ID found>"}")
@@ -531,9 +548,43 @@ class VeeamBackupExecutionProvider implements BackupExecutionProvider {
 									config.restoreHref = restoreLink.href.toString()
 									config.restoreRef = VeeamUtils.extractVeeamUuid(config.restoreHref.toString())
 								} else {
-									def objectRef = VeeamUtils.getVmHierarchyObjRef(backupResult.backup, server)
-									def restorePoint = apiService.getRestorePoint(authConfig, objectRef, [startDate: startDate])
-									log.debug("restorePoint: ${restorePoint}, id: ${restorePoint.data?.externalId}")
+									def doSaveBackup = false
+									def veeamHierarchyRef = backupResult.backup.getConfigProperty("veeamHierarchyRef")
+									def veeamObjectRef = backupResult.backup.getConfigProperty("veeamObjectRef")
+
+									if(!veeamHierarchyRef) {
+										veeamHierarchyRef = VeeamUtils.getVmHierarchyObjRef(backupResult.backup)
+										backup.setConfigProperty("veeamHierarchyRef", veeamHierarchyRef)
+										doSaveBackup
+									}
+
+									if(!veeamObjectRef) {
+										def hierarchyRoot = VeeamUtils.getHierarchyRoot(backup)
+										if(veeamHierarchyRef) {
+											def vmRefId = cloudType == VeeamUtils.CLOUD_TYPE_VMWARE ? server.externalId : null
+											def vmIdResults = apiService.lookupVm(authConfig.apiUrl, token, cloudType, hierarchyRoot, vmRefId)
+											veeamObjectRef = vmIdResults.vmId
+										} else { //no veeamHierarchyRef, lookup by name
+											def vmName = server.name
+											def vmIdResults = apiService.lookupVmByName(authConfig.apiUrl, token, hierarchyRoot, vmName)
+											veeamObjectRef = vmIdResults.vmId
+										}
+
+										if(veeamObjectRef) {
+											backup.setConfigProperty("veeamObjectRef", veeamObjectRef)
+											doSaveBackup = true
+										}
+									}
+
+									if(doSaveBackup) {
+										morpheus.async.backup.save(backup).subscribe().dispose()
+									}
+
+									def restorePoint = apiService.getRestorePoint(authConfig, veeamObjectRef, [startRefDateStr: startDate])
+									if(!restorePoint.data?.externalId) {
+										//try by veeamHierachyRef
+										restorePoint = apiService.getRestorePoint(authConfig, veeamHierarchyRef, [startRefDateStr: startDate])
+									}
 									if(restorePoint.data?.externalId) {
 										config.restorePointRef = restorePoint.data.externalId
 									}
@@ -552,7 +603,9 @@ class VeeamBackupExecutionProvider implements BackupExecutionProvider {
 						}
 						rtn.data.updates = doUpdate
 						rtn.success = true
-						apiService.logoutSession(apiUrl, token, sessionId)
+						if(sessionId) {
+							apiService.logoutSession(apiUrl, token, sessionId)
+						}
 					}
 				} else {
 					rtn.success = true

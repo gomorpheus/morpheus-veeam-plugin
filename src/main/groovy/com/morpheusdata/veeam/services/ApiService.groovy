@@ -679,7 +679,7 @@ class ApiService {
 			HttpApiClient httpApiClient = new HttpApiClient()
 			def results = httpApiClient.callXmlApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'POST')
 			log.debug("veeam backup start request got: ${results}")
-			def jobStartDate = results.headers.Date
+			def jobStartDate = results.headers?.Date
 			rtn.success = results?.success
 			if (results?.success == true) {
 				def response = XmlUtils.xmlToMap(results.data, true)
