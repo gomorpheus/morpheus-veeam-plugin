@@ -10,6 +10,7 @@ import com.morpheusdata.veeam.VeeamBackupProvider
 import com.morpheusdata.veeam.VeeamPlugin
 import com.morpheusdata.veeam.services.ApiService
 import com.morpheusdata.model.projection.BackupJobIdentityProjection
+import com.morpheusdata.veeam.utils.VeeamUtils
 import groovy.util.logging.Slf4j
 import io.reactivex.rxjava3.core.Observable
 import io.reactivex.rxjava3.core.Single
@@ -71,7 +72,7 @@ class BackupJobSync {
 			//backup server
 			def backupServerRef = cloudItem.links?.link?.find { it.type == 'BackupServerReference' }
 			if (backupServerRef)
-				addConfig.internalId = ApiService.extractVeeamUuid(backupServerRef.href)
+				addConfig.internalId = VeeamUtils.extractVeeamUuid(backupServerRef.href)
 			def add = new BackupJob(addConfig)
 			add.setConfigMap(cloudItem)
 			adds << add

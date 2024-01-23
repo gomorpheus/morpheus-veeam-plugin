@@ -11,6 +11,7 @@ import com.morpheusdata.model.projection.BackupRepositoryIdentityProjection
 import com.morpheusdata.veeam.VeeamBackupProvider
 import com.morpheusdata.veeam.VeeamPlugin
 import com.morpheusdata.veeam.services.ApiService
+import com.morpheusdata.veeam.utils.VeeamUtils
 import groovy.util.logging.Slf4j
 import io.reactivex.rxjava3.core.Observable
 import io.reactivex.rxjava3.core.Single
@@ -66,7 +67,7 @@ class BackupRepositorySync {
 			def objCategory = "veeam.repository.${backupProviderModel.id}"
 			def addConfig = [account   : backupProviderModel.account, backupProvider: backupProviderModel, code: objCategory + '.' + cloudItem.externalId,
 			                 category  : objCategory, name: cloudItem.name, enabled: true, externalId: cloudItem.externalId,
-			                 internalId: apiService.extractVeeamUuid(cloudItem.href)
+			                 internalId: VeeamUtils.extractVeeamUuid(cloudItem.href)
 			]
 			//set platform
 			if (cloudItem.kind?.indexOf('indows') > -1)
