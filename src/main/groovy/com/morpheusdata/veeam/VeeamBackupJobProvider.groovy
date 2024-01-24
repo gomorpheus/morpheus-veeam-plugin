@@ -26,10 +26,10 @@ class VeeamBackupJobProvider implements BackupJobProvider {
 	MorpheusContext morpheus;
 	ApiService apiService
 
-	VeeamBackupJobProvider(Plugin plugin, MorpheusContext morpheus) {
+	VeeamBackupJobProvider(Plugin plugin, MorpheusContext morpheus, ApiService apiService) {
 		this.plugin = plugin
 		this.morpheus = morpheus
-		this.apiService = new ApiService()
+		this.apiService = apiService
 	}
 
 	@Override
@@ -63,7 +63,8 @@ class VeeamBackupJobProvider implements BackupJobProvider {
 	ServiceResponse cloneBackupJob(BackupJob sourceBackupJobModel, BackupJob backupJobModel, Map opts) {
 		def rtn = [success:false]
 		try {
-			def backupProvider = sourceBackupJobModel.backupProvider
+			def backupProvider = backupJobModel.backupProvider
+			log.debug("cloneBackupJob, backupProvider: {}", backupProvider)
 			def authConfig = apiService.getAuthConfig(backupProvider)
 			def cloneId = VeeamUtils.extractVeeamUuid(sourceBackupJobModel.externalId)
 			def jobName = "${backupJobModel.name}-${backupJobModel.account.id}"

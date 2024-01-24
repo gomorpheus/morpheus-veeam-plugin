@@ -5,6 +5,7 @@ import com.morpheusdata.core.MorpheusContext
 import com.morpheusdata.core.Plugin
 import com.morpheusdata.model.BackupProvider
 import com.morpheusdata.model.Cloud
+import com.morpheusdata.veeam.services.ApiService
 import groovy.util.logging.Slf4j
 
 @Slf4j
@@ -12,10 +13,12 @@ class VeeamOptionSourceProvider extends AbstractOptionSourceProvider {
 
 	VeeamPlugin plugin
 	MorpheusContext morpheusContext
+	ApiService apiService
 
-	VeeamOptionSourceProvider(VeeamPlugin plugin, MorpheusContext context) {
+	VeeamOptionSourceProvider(VeeamPlugin plugin, MorpheusContext context, ApiService) {
 		this.plugin = plugin
 		this.morpheusContext = context
+		this.apiService = apiService
 	}
 
 	@Override

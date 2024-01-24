@@ -28,10 +28,10 @@ class VeeamBackupExecutionProvider implements BackupExecutionProvider {
 	MorpheusContext morpheus
 	ApiService apiService
 
-	VeeamBackupExecutionProvider(Plugin plugin, MorpheusContext morpheus) {
+	VeeamBackupExecutionProvider(Plugin plugin, MorpheusContext morpheus, ApiService apiService) {
 		this.plugin = plugin
 		this.morpheus = morpheus
-		this.apiService = new ApiService()
+		this.apiService = apiService
 	}
 
 	/**
@@ -356,10 +356,7 @@ class VeeamBackupExecutionProvider implements BackupExecutionProvider {
 					String veeamHierarchyRef = backup.getConfigProperty("veeamHierarchyRef")
 					def hasFullBackup = false
 
-					def resultCountQuery = new DataQuery().withFilters(
-						new DataFilter("backup.id", backup.id),
-						new DataFilter("status", BackupResult.Status.START_REQUESTED)
-					)
+
 					if(cloud.cloudType.code == "hyperv" || cloud.cloudType.code == "scvmm") {
 						opts.cloudType = VeeamUtils.CLOUD_TYPE_HYPERV
 						//we don't store the GUID for hyper-v servers, just the name - so use the name lookup
@@ -400,12 +397,17 @@ class VeeamBackupExecutionProvider implements BackupExecutionProvider {
 					}
 
 					if(doSaveBackup) {
-						backup.save(flush:true)
+						morpheus.services.backup.save(backup)
 					}
 
 					log.debug("executeBackup vmId: ${veeamObjectRef}")
 					if(veeamObjectRef || veeamHierarchyRef) {
-						def resultCount = resultCountQuery.where { backupType == 'default' }.count()
+						def resultCountQuery = new DataQuery().withFilters(
+							new DataFilter("backup.id", backup.id),
+							new DataFilter("status", BackupResult.Status.SUCCEEDED.toString()),
+							new DataFilter("backupType", "in", ["default", "quickbackup"])
+						)
+						def resultCount = morpheus.services.backup.backupResult.count(resultCountQuery)
 						hasFullBackup = (resultCount > 0)
 
 						if(hasFullBackup && veeamObjectRef) {
@@ -429,7 +431,7 @@ class VeeamBackupExecutionProvider implements BackupExecutionProvider {
 								repository = morpheus.services.backupRepository.find(new DataQuery().withFilter("category", "veeam.repository.${backupProvider.id}"))
 							}
 							if(repository) {
-								def startResponse = apiService.startVeeamZip(authConfig, backupServerId, repository.externalId, veeamObjectRef, [lastBackupSessionId: lastResult?.getConfigProperty("backupSessionId"), vmwToolsInstalled: computeServer.toolsInstalled])
+								def startResponse = apiService.startVeeamZip(authConfig, backupServerId, repository.externalId, veeamHierarchyRef, [lastBackupSessionId: lastResult?.getConfigProperty("backupSessionId"), vmwToolsInstalled: computeServer.toolsInstalled])
 								if(startResponse.success) {
 									rtn.data.backupResult.externalId = startResponse.backupSessionId
 									rtn.data.backupResult.startDate = DateUtility.parseDate(startResponse.startDate as CharSequence)
@@ -484,7 +486,7 @@ class VeeamBackupExecutionProvider implements BackupExecutionProvider {
 	ServiceResponse<BackupExecutionResponse> refreshBackupResult(BackupResult backupResult) {
 		ServiceResponse<BackupExecutionResponse> rtn = ServiceResponse.prepare(new BackupExecutionResponse(backupResult))
 		if(backupResult.backup.backupProvider.enabled) {
-			try{
+			try {
 				def backup = backupResult.backup
 				def backupProvider = backup.backupProvider
 				def backupResultConfig = backupResult.configMap
@@ -553,7 +555,7 @@ class VeeamBackupExecutionProvider implements BackupExecutionProvider {
 									def veeamObjectRef = backupResult.backup.getConfigProperty("veeamObjectRef")
 
 									if(!veeamHierarchyRef) {
-										veeamHierarchyRef = VeeamUtils.getVmHierarchyObjRef(backupResult.backup)
+										veeamHierarchyRef = VeeamUtils.getVmHierarchyObjRef(backupResult.backup, server)
 										backup.setConfigProperty("veeamHierarchyRef", veeamHierarchyRef)
 										doSaveBackup
 									}
@@ -582,10 +584,11 @@ class VeeamBackupExecutionProvider implements BackupExecutionProvider {
 
 									def restorePoint = apiService.getRestorePoint(authConfig, veeamObjectRef, [startRefDateStr: startDate])
 									if(!restorePoint.data?.externalId) {
+										log.debug("No restore point found by veeamObjectRef, trying by veeamHierarchyRef")
 										//try by veeamHierachyRef
 										restorePoint = apiService.getRestorePoint(authConfig, veeamHierarchyRef, [startRefDateStr: startDate])
 									}
-									if(restorePoint.data?.externalId) {
+									if(restorePoint?.data?.externalId) {
 										config.restorePointRef = restorePoint.data.externalId
 									}
 								}
@@ -604,6 +607,7 @@ class VeeamBackupExecutionProvider implements BackupExecutionProvider {
 						rtn.data.updates = doUpdate
 						rtn.success = true
 						if(sessionId) {
+							log.debug("Logout session ${sessionId}")
 							apiService.logoutSession(apiUrl, token, sessionId)
 						}
 					}

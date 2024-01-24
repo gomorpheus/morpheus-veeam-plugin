@@ -25,11 +25,11 @@ class VeeamBackupProvider extends AbstractBackupProvider {
 
 	VeeamBackupJobProvider backupJobProvider;
 
-	VeeamBackupProvider(Plugin plugin, MorpheusContext morpheusContext) {
+	VeeamBackupProvider(Plugin plugin, MorpheusContext morpheusContext, ApiService apiService) {
 		super(plugin, morpheusContext)
-		apiService = new ApiService()
+		this.apiService = apiService
 
-		VeeamVMWareBackupTypeProvider backupTypeProvider = new VeeamVMWareBackupTypeProvider(plugin, morpheus)
+		VeeamVMWareBackupTypeProvider backupTypeProvider = new VeeamVMWareBackupTypeProvider(plugin, morpheus, apiService)
 		plugin.registerProvider(backupTypeProvider)
 		addScopedProvider(backupTypeProvider, "vmware", null)
 		addScopedProvider(backupTypeProvider, "scvmm", null)
@@ -246,7 +246,7 @@ class VeeamBackupProvider extends AbstractBackupProvider {
 		// scheduling and execution of the jobs. Replace the default job provider
 		// if jobs are to be managed on the external backup system.
 		if(!this.backupJobProvider) {
-			this.backupJobProvider = new VeeamBackupJobProvider(getPlugin(), morpheus);
+			this.backupJobProvider = new VeeamBackupJobProvider(getPlugin(), morpheus, apiService)
 		}
 		return this.backupJobProvider
 	}

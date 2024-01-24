@@ -17,8 +17,15 @@ package com.morpheusdata.veeam
 
 import com.morpheusdata.core.MorpheusContext
 import com.morpheusdata.core.Plugin
+import com.morpheusdata.model.AccountCredential
+import com.morpheusdata.model.BackupProvider
+import com.morpheusdata.veeam.services.ApiService
+import groovy.util.logging.Slf4j
 
+@Slf4j
 class VeeamPlugin extends Plugin {
+
+	ApiService apiService
 
     @Override
     String getCode() {
@@ -28,8 +35,9 @@ class VeeamPlugin extends Plugin {
     @Override
     void initialize() {
         this.setName("Veeam")
-        this.registerProvider(new VeeamBackupProvider(this,this.morpheus))
-	    this.registerProvider(new VeeamOptionSourceProvider(this,this.morpheus))
+		this.apiService = new ApiService(this)
+        this.registerProvider(new VeeamBackupProvider(this,this.morpheus, apiService))
+	    this.registerProvider(new VeeamOptionSourceProvider(this,this.morpheus, apiService))
     }
 
     /**
@@ -46,5 +54,16 @@ class VeeamPlugin extends Plugin {
 
 	MorpheusContext getMorpheusContext() {
 		this.morpheus
+	}
+
+	BackupProvider loadCredentials(BackupProvider backupProvider) {
+		log.debug("Loading credentials for backupProvider: ${backupProvider} with account: ${backupProvider.account}")
+		if(!backupProvider.credentialLoaded) {
+			AccountCredential accountCredential
+			accountCredential = this.morpheus.services.accountCredential.loadCredentials(backupProvider)
+			backupProvider.credentialLoaded = true
+			backupProvider.credentialData = accountCredential?.data
+		}
+		return backupProvider
 	}
 }

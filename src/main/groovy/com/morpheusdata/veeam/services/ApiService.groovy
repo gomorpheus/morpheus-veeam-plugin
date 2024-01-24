@@ -1,5 +1,6 @@
 package com.morpheusdata.veeam.services
 
+import com.morpheusdata.core.Plugin
 import com.morpheusdata.core.util.DateUtility
 import com.morpheusdata.core.util.HttpApiClient
 import com.morpheusdata.model.BackupProvider
@@ -15,8 +16,14 @@ import java.util.regex.Pattern
 @Slf4j
 class ApiService {
 
+	Plugin plugin
+
 	static taskSleepInterval = 5l * 1000l //5 seconds
 	static maxTaskAttempts = 36
+
+	ApiService(Plugin plugin) {
+		this.plugin = plugin
+	}
 
 	def getApiUrl(BackupProvider backupProvider) {
 		backupProvider.serviceUrl
@@ -26,6 +33,9 @@ class ApiService {
 	}
 
 	Map getAuthConfig(BackupProvider backupProviderModel) {
+		def newBackupProvider = this.plugin.loadCredentials(backupProviderModel)
+		log.debug("newBackupProvider, credsLoaded: ${newBackupProvider.credentialLoaded}, credentialData: ${newBackupProvider.credentialData}")
+
 		def rtn = [
 			apiUrl: getApiUrl(backupProviderModel),
 			basePath: '/api',
@@ -35,6 +45,7 @@ class ApiService {
 		log.debug("getAuthConfig: ${rtn}")
 		return rtn
 	}
+
 
 	def loginSession(BackupProvider backupProviderModel) {
 		def authConfig = getAuthConfig(backupProviderModel)
@@ -65,6 +76,7 @@ class ApiService {
 	}
 
 	static getToken(Map authConfig) {
+		log.debug("authConfig: ${authConfig}")
 		def rtn = [success:false]
 		def requestToken = true
 		if(authConfig.token) {
@@ -75,8 +87,9 @@ class ApiService {
 		}
 		//if need a new one
 		if(requestToken == true) {
-			def apiPath = authConfig.basePath + '/sessionMngr/'
+			def apiPath = authConfig.basePath + '/sessionMngr'
 			def headers = buildHeaders([:], null)
+			log.debug("tokenHeaders: ${headers}, authConfig: ${authConfig}")
 			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers)
 			HttpApiClient httpApiClient = new HttpApiClient()
 			def results = httpApiClient.callXmlApi(authConfig.apiUrl, apiPath, authConfig.username, authConfig.password, requestOpts, 'POST')
@@ -422,6 +435,7 @@ class ApiService {
 		log.info("cloneBackupJob: ${opts}")
 		def rtn = [success:false, jobId:null, data:null]
 		def tokenResults = getToken(authConfig)
+		log.debug("cloneBackupJob tokenResults: ${tokenResults}")
 		if(tokenResults.success == true) {
 			def sourceJob = getBackupJob(authConfig.apiUrl, tokenResults.token, cloneId)
 			def apiPath = authConfig.basePath + '/jobs/' + cloneId
@@ -806,7 +820,7 @@ class ApiService {
 			HttpApiClient httpApiClient = new HttpApiClient()
 			def results = httpApiClient.callXmlApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'POST')
 			log.debug("veeamzip backup start request got: ${results}")
-			def backupStartDate = results.headers.Date
+			def backupStartDate = results.headers?.Date
 			rtn.success = results?.success
 			if (results?.success == true) {
 				def response = XmlUtils.xmlToMap(results.data, true)
@@ -1088,14 +1102,15 @@ class ApiService {
 	}
 
 	static getRestoreResult(url, token, restoreSessionId) {
+		log.debug("getRestoreResult: ${restoreSessionId}, url: ${url}, token: ${token}")
 		def rtn = [success:false]
 		def restoreResult = [:]
 		def headers = buildHeaders([:], token)
 		def query = [format: "Entity"]
 		HttpApiClient httpApiClient = new HttpApiClient()
 		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
-		def results = httpApiClient.callXmlApi(url, "/api/restoreSessions/${restoreSessionId}", null, null, requestOpts, 'GET')
-		log.debug("got: ${results}")
+		def results = httpApiClient.callXmlApi(url, "/api/restoreSessions/${restoreSessionId}", requestOpts, 'GET')
+		log.debug("getRestoreResult results: ${results}")
 		rtn.success = results?.success
 		if(results?.success == true) {
 			def response = new groovy.util.XmlSlurper().parseText(results.content)

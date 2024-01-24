@@ -29,10 +29,10 @@ class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 	MorpheusContext morpheus
 	ApiService apiService
 
-	VeeamBackupRestoreProvider(Plugin plugin, MorpheusContext morpheusContext) {
+	VeeamBackupRestoreProvider(Plugin plugin, MorpheusContext morpheusContext, ApiService apiService) {
 		this.plugin = plugin
 		this.morpheus = morpheusContext
-		this.apiService = new ApiService()
+		this.apiService = apiService
 	}
 
 	/**
@@ -223,13 +223,13 @@ class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 				server.internalName = infrastructureConfig?.server?.name
 				morpheus.services.computeServer.save(server)
 
-				backupRestore.status = 'IN_PROGRESS'
+				backupRestore.status = BackupRestore.Status.IN_PROGRESS.toString()
 				backupRestore.externalStatusRef = restoreResults.restoreSessionId
 				backupRestore.containerId = workload.id
 				rtn.data.updates = true
 				rtn.success = true
 			} else {
-				backupRestore.status = 'FAILED'
+				backupRestore.status = BackupRestore.Status.FAILED.toString()
 				backupRestore.errorMessage = restoreResults.msg
 				rtn.data.updates = true
 
@@ -241,7 +241,10 @@ class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 					}
 				}
 			}
-			apiService.logoutSession(authConfig.apiUrl, token, sessionId)
+
+			if(sessionId) {
+				apiService.logoutSession(authConfig.apiUrl, token, sessionId)
+			}
 		} catch(e) {
 			log.error("restoreBackup error", e)
 			rtn.error = "Failed to restore Veeam backup: ${e}"
@@ -264,7 +267,7 @@ class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 		log.debug "refreshBackupRestoreResult: ${backupRestore}, ${backupResult}"
 
 		ServiceResponse<BackupRestoreResponse> rtn = ServiceResponse.prepare(new BackupRestoreResponse(backupRestore))
-		Backup backup = morpheus.services.backup.get(backupResult.backup.id)
+		Backup backup = (Backup) morpheus.services.backup.find(new DataQuery().withFilter("id", backupResult.backup.id).withJoins(["backupProvider", "backupProvider.account"]))
 		BackupProvider backupProvider = backup.backupProvider
 		if(!backupProvider.enabled) {
 			rtn.msg = "Veeam not enabled"
@@ -272,6 +275,7 @@ class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 		}
 
 		try{
+			log.debug("refreshBackupRestoreResult backupProvider: ${backupProvider}, accountId: ${backupProvider.account?.id}")
 			def apiUrl = apiService.getApiUrl(backupProvider)
 			def session = apiService.loginSession(backupProvider)
 			def token = session.token
@@ -281,9 +285,13 @@ class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 				rtn.msg = "No restore session found."
 				return rtn
 			}
+			log.debug("get restore session: ${restoreSessionId}")
 			def result = apiService.getRestoreResult(apiUrl, token, restoreSessionId)
+			log.debug("restore session result: ${result}")
 			def restoreSession = result.result
-			apiService.logoutSession(apiUrl, token, sessionId)
+			if(sessionId) {
+				apiService.logoutSession(apiUrl, token, sessionId)
+			}
 
 			log.debug "restoreSession: ${restoreSession}"
 			if(restoreSession) {

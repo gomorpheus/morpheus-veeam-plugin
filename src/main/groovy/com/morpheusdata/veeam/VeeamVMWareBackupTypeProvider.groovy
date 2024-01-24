@@ -9,6 +9,7 @@ import com.morpheusdata.core.backup.BackupTypeProvider
 import com.morpheusdata.model.BackupProvider as BackupProviderModel
 import com.morpheusdata.model.OptionType
 import com.morpheusdata.response.ServiceResponse
+import com.morpheusdata.veeam.services.ApiService
 import groovy.util.logging.Slf4j
 
 /**
@@ -19,11 +20,14 @@ import groovy.util.logging.Slf4j
 @Slf4j
 class VeeamVMWareBackupTypeProvider extends AbstractBackupTypeProvider {
 
-	BackupExecutionProvider executionProvider;
-	BackupRestoreProvider restoreProvider;
+	BackupExecutionProvider executionProvider
+	BackupRestoreProvider restoreProvider
 
-	VeeamVMWareBackupTypeProvider(Plugin plugin, MorpheusContext morpheusContext) {
+	ApiService apiService
+
+	VeeamVMWareBackupTypeProvider(Plugin plugin, MorpheusContext morpheusContext, ApiService apiService) {
 		super(plugin, morpheusContext)
+		this.apiService = apiService
 	}
 
 	/**
@@ -152,7 +156,7 @@ class VeeamVMWareBackupTypeProvider extends AbstractBackupTypeProvider {
 	@Override
 	VeeamBackupExecutionProvider getExecutionProvider() {
 		if(!this.executionProvider) {
-			this.executionProvider = new VeeamBackupExecutionProvider(plugin, morpheus)
+			this.executionProvider = new VeeamBackupExecutionProvider(plugin, morpheus, apiService)
 		}
 		return this.executionProvider
 	}
@@ -164,7 +168,7 @@ class VeeamVMWareBackupTypeProvider extends AbstractBackupTypeProvider {
 	@Override
 	VeeamBackupRestoreProvider getRestoreProvider() {
 		if(!this.restoreProvider) {
-			this.restoreProvider = new VeeamBackupRestoreProvider(plugin, morpheus)
+			this.restoreProvider = new VeeamBackupRestoreProvider(plugin, morpheus, apiService)
 		}
 		return this.restoreProvider
 	}
