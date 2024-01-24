@@ -32,6 +32,7 @@ class ManagedServerSync {
 			log.debug("ManagedServerSync execute")
 			Map authConfig = apiService.getAuthConfig(backupProviderModel)
 			def listResults = apiService.listManagedServers(authConfig)
+			log.debug("ManagedServerSync listResults: ${listResults}")
 			if(listResults.success) {
 				ArrayList<Map> cloudItems = listResults.managedServers.findAll { it.managedServerType != "Local" }
 				

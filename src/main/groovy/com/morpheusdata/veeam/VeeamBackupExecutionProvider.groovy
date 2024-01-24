@@ -45,6 +45,7 @@ class VeeamBackupExecutionProvider implements BackupExecutionProvider {
 	 */
 	@Override
 	ServiceResponse configureBackup(Backup backup, Map config, Map opts) {
+		log.debug("configureBackup: {}, {}, {}", backup, config, opts)
 		if(config.veeamManagedServer) {
 			def managedServerId = config.veeamManagedServer.split(":").getAt(0)
 			def managedServerRef = morpheus.services.referenceData.find(new DataQuery().withFilters([
@@ -123,12 +124,14 @@ class VeeamBackupExecutionProvider implements BackupExecutionProvider {
 			//get managed servers
 			def managedServers = []
 			def hierarchyRoot = VeeamUtils.getHierarchyRoot(backup)
+			log.debug("createBackup hierarchyRoot: ${hierarchyRoot}")
 
 			if(hierarchyRoot) {
 				managedServers << hierarchyRoot
 			} else {
 				def objCategory = "veeam.backup.managedServer.${backupProvider.id}"
 				def typeFilter = VeeamUtils.getManagedServerTypeFromZoneType(cloud.cloudType.code)
+				log.debug("createBackup objCategory: ${objCategory} typeFilter: ${typeFilter}")
 				def managedServerResults = morpheus.services.referenceData.list(new DataQuery().withFilters(
 				        new DataFilter("account.id", backupProvider.account.id),
 				        new DataFilter("category", objCategory),

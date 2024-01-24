@@ -29,12 +29,25 @@ class VeeamBackupProvider extends AbstractBackupProvider {
 		super(plugin, morpheusContext)
 		this.apiService = apiService
 
-		VeeamVMWareBackupTypeProvider backupTypeProvider = new VeeamVMWareBackupTypeProvider(plugin, morpheus, apiService)
-		plugin.registerProvider(backupTypeProvider)
-		addScopedProvider(backupTypeProvider, "vmware", null)
-		addScopedProvider(backupTypeProvider, "scvmm", null)
-		addScopedProvider(backupTypeProvider, "hyperv", null)
-		addScopedProvider(backupTypeProvider, "vcd", null)
+		// register VMWare backup provider
+		VeeamVMWareBackupTypeProvider vmwareProvider = new VeeamVMWareBackupTypeProvider(plugin, morpheus, apiService)
+		plugin.registerProvider(vmwareProvider)
+		addScopedProvider(vmwareProvider, "vmware", null)
+
+		// register SCVMM backup provider
+		VeeamScvmmBackupTypeProvider scvmmProvider = new VeeamScvmmBackupTypeProvider(plugin, morpheus, apiService)
+		plugin.registerProvider(scvmmProvider)
+		addScopedProvider(scvmmProvider, "scvmm", null)
+
+		// register HyperV backup provider
+		VeeamHypervBackupTypeProvider hypervProvider = new VeeamHypervBackupTypeProvider(plugin, morpheus, apiService)
+		plugin.registerProvider(hypervProvider)
+		addScopedProvider(hypervProvider, "hyperv", null)
+
+		// register VCD backup provider
+		VeeamVcdBackupTypeProvider vcdProvider = new VeeamVcdBackupTypeProvider(plugin, morpheus, apiService)
+		plugin.registerProvider(vcdProvider)
+		addScopedProvider(vcdProvider, "vcd", null)
 	}
 
 	/**

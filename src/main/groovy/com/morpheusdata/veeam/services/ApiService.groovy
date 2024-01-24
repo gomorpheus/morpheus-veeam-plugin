@@ -519,11 +519,26 @@ class ApiService {
 		return rtn
 	}
 
-	static waitForVm(Map authConfig, String vmExternalId, List managedServers, Map opts) {
+	/**
+	 * This method waits for a VM to be available in the Veeam backup server.
+	 * It continuously checks for the VM's availability until a maximum number of attempts is reached.
+	 *
+	 * @param authConfig A map containing the authentication configuration for the Veeam server.
+	 *                   This includes the API URL, base path, and the token.
+	 * @param vmExternalId The external ID of the VM to wait for.
+	 * @param managedServers A list of managed servers in the Veeam backup server that the VM could be associated with.
+	 * @param maxWaitTime The maximum time (in seconds) to wait for the VM to be available.
+	 *                    The method will stop checking after this time has passed.
+	 * @param opts Additional options for the method. This can include various configuration parameters.
+	 * @return A map containing the result of the operation.
+	 *         This includes a success flag and the VM ID if the VM was found.
+	 */
+	static waitForVm(Map authConfig, String vmExternalId, List managedServers, Long maxWaitTime = 300, Map opts) {
 		def rtn = [success:false, error:false, data:null, vmId:null]
 		def attempt = 0
 		def keepGoing = true
-		while(keepGoing == true && attempt < 2) {
+		def maxAttempts = maxWaitTime / taskSleepInterval
+		while(keepGoing == true && attempt < maxAttempts) {
 			//load the vm
 			def results = findVm(authConfig, vmExternalId, managedServers, opts)
 			if(results.success == true) {
@@ -537,6 +552,8 @@ class ApiService {
 				attempt++
 				sleep(taskSleepInterval)
 			}
+
+
 		}
 		return rtn
 	}
@@ -553,7 +570,7 @@ class ApiService {
 			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 			HttpApiClient httpApiClient = new HttpApiClient()
 			//need managed servers
-			def findResults = waitForVm(authConfig, opts.externalId, managedServers, opts)
+			def findResults = waitForVm(authConfig, opts.externalId, managedServers, 600, opts)
 			log.info("wait results: ${findResults}")
 			if(findResults.success == true) {
 				def vmId = findResults.vmId
@@ -1415,10 +1432,11 @@ class ApiService {
 		def vmId = VeeamUtils.getVmHierarchyObjRef(vmRefId, hierarchyRoot, cloudType)
 		def headers = buildHeaders([:], token)
 		def query = [hierarchyRef: vmId]
+		log.debug("getVmId query: ${query}")
 		HttpApiClient httpApiClient = new HttpApiClient()
 		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 		def results = httpApiClient.callXmlApi(url, "/api/lookup", requestOpts, 'GET')
-		log.debug("got: ${results}")
+		log.debug("getVmId results: ${results}")
 		rtn.success = results?.success
 		if(rtn.success == true) {
 			def response = new groovy.util.XmlSlurper().parseText(results.content)
