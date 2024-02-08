@@ -1,12 +1,14 @@
-package com.morpheusdata.veeam
+package com.morpheusdata.veeam.backup
 
 import com.morpheusdata.core.MorpheusContext
 import com.morpheusdata.core.Plugin
 import com.morpheusdata.core.backup.BackupRestoreProvider
+import com.morpheusdata.core.backup.BackupTypeProvider
 import com.morpheusdata.core.backup.response.BackupRestoreResponse
 import com.morpheusdata.core.data.DataFilter
 import com.morpheusdata.core.data.DataQuery
 import com.morpheusdata.core.util.DateUtility
+import com.morpheusdata.core.util.HttpApiClient
 import com.morpheusdata.model.BackupProvider
 import com.morpheusdata.model.Cloud
 import com.morpheusdata.model.ComputeServer
@@ -18,22 +20,20 @@ import com.morpheusdata.model.Backup;
 import com.morpheusdata.model.Instance
 import com.morpheusdata.veeam.services.ApiService
 import com.morpheusdata.veeam.utils.VeeamUtils
+import com.morpheusdata.veeam.utils.XmlUtils
 import groovy.util.logging.Slf4j
-
-import static com.morpheusdata.veeam.VeeamBackupRestoreProvider.*
+import groovy.xml.StreamingMarkupBuilder
 
 @Slf4j
-class VeeamBackupRestoreProvider implements BackupRestoreProvider {
+interface VeeamBackupRestoreProviderInterface extends BackupRestoreProvider {
 
-	Plugin plugin
-	MorpheusContext morpheus
-	ApiService apiService
+	Plugin getPlugin()
 
-	VeeamBackupRestoreProvider(Plugin plugin, MorpheusContext morpheusContext, ApiService apiService) {
-		this.plugin = plugin
-		this.morpheus = morpheusContext
-		this.apiService = apiService
-	}
+	MorpheusContext getMorpheus()
+
+	ApiService getApiService()
+
+	VeeamBackupTypeProvider getBackupTypeProvider()
 
 	/**
 	 * Add additional configurations to a backup restore. Morpheus will handle all basic configuration details, this is a
@@ -44,8 +44,7 @@ class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 	 * @return a {@link ServiceResponse} object. A ServiceResponse with a false success will indicate a failed
 	 * configuration and will halt the backup restore process.
 	 */
-	@Override
-	ServiceResponse configureRestoreBackup(BackupResult backupResult, Map config, Map opts) {
+	default ServiceResponse configureRestoreBackup(BackupResult backupResult, Map config, Map opts) {
 		return ServiceResponse.success()
 	}
 
@@ -58,8 +57,7 @@ class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 	 * @return a {@link ServiceResponse} object. A ServiceResponse with a false success will indicate a failed
 	 * configuration and will halt the backup restore process.
 	 */
-	@Override
-	ServiceResponse getBackupRestoreInstanceConfig(BackupResult backupResult, Instance instanceModel, Map restoreConfig, Map opts) {
+	default ServiceResponse getBackupRestoreInstanceConfig(BackupResult backupResult, Instance instanceModel, Map restoreConfig, Map opts) {
 		return ServiceResponse.success()
 	}
 
@@ -71,8 +69,7 @@ class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 	 * @return a {@link ServiceResponse} object. A ServiceResponse with a false success will indicate a failed
 	 * configuration and will halt the backup restore process.
 	 */
-	@Override
-	ServiceResponse validateRestoreBackup(BackupResult backupResult, Map opts) {
+	default ServiceResponse validateRestoreBackup(BackupResult backupResult, Map opts) {
 		return ServiceResponse.success()
 	}
 
@@ -102,8 +99,7 @@ class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 	 * @return a {@link ServiceResponse} object. A ServiceResponse with a false success will indicate a failed
 	 * configuration and will halt the backup restore process.
 	 */
-	@Override
-	ServiceResponse getRestoreOptions(Backup backup, Map opts) {
+	default ServiceResponse getRestoreOptions(Backup backup, Map opts) {
 		log.debug "getRestoreOptions: backup: ${backup}, opts: ${opts}"
 		ServiceResponse rtn = ServiceResponse.prepare()
 
@@ -165,8 +161,7 @@ class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 	 * @return a {@link ServiceResponse} object. A ServiceResponse with a false success will indicate a failed
 	 * configuration and will halt the backup restore process.
 	 */
-	@Override
-	ServiceResponse restoreBackup(BackupRestore backupRestore, BackupResult backupResult, Backup backup, Map opts) {
+	default ServiceResponse restoreBackup(BackupRestore backupRestore, BackupResult backupResult, Backup backup, Map opts) {
 		log.debug("restoreBackup, restore: {}, source: {}, opts: {}", backupRestore, backupResult, opts)
 		ServiceResponse rtn = ServiceResponse.prepare(new BackupRestoreResponse(backupRestore))
 		def backupSessionId = backupResult.externalId ?: backupResult.getConfigProperty('backupSessionId')
@@ -176,7 +171,8 @@ class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 			Workload workload = containerId ? morpheus.services.workload.find(new DataQuery().withFilter("id", containerId).withJoins("server", "server.zone", "server.zone.zoneType")) : null
 			ComputeServer server = workload?.server
 			Cloud cloud = server.cloud
-			def objectRef = VeeamUtils.getVmHierarchyObjRef(backup, server)
+			def hierarchyRoot = backup.getConfigProperty('hierarchyRoot')
+			def objectRef = getRestoreObjectRef(backupTypeProvider.getVmHierarchyObjRef(backup, server))
 			def authConfig = apiService.getAuthConfig(backup.backupProvider)
 			def tokenResults = apiService.getToken(authConfig)
 			def token = tokenResults.token
@@ -184,30 +180,12 @@ class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 			def infrastructureConfig = backupResult.getConfigProperty('infrastructureConfig') ?: backup.getConfigProperty('infrastructureConfig')
 
 
-			def restoreOpts = [authConfig: authConfig, cloudTypeCode: cloud?.cloudType?.code, backupType: backupResult.backupType]
-			if(backupResult.getConfigProperty("restoreHref")) {
-				restoreOpts += backupResult.getConfigMap()
-			} else {
-				restoreOpts.restorePointRef = backupResult.getConfigProperty('restorePointRef') ?: backupResult.getConfigProperty('vmRestorePointRef')
-				if(backupResult.getConfigProperty('restorePointRef')) {
-					restoreOpts.restorePointId = VeeamUtils.extractVeeamUuid(backupResult.getConfigProperty('restorePointRef'))
-				}
-				if(backupResult.getConfigProperty('vmRestorePointRef')) {
-					restoreOpts.vmRestorePointid = VeeamUtils.extractVeeamUuid(backupResult.getConfigProperty('vmRestorePointRef'))
-				}
-			}
-			restoreOpts.hierarchyRoot = backup.getConfigProperty('hierarchyRoot')
-			restoreOpts.containerId = containerId
-			restoreOpts.vmId = server.externalId
-			restoreOpts.vmName = server.displayName
-			if(restoreOpts.cloudTypeCode == 'vcd') {
-				restoreOpts.vdcId = cloud.getConfigProperty("vdcId")
-				restoreOpts.vAppId = server.internalId?.toLowerCase()?.replace("vapp-", "")
-				restoreOpts.vCenterVmId = server.uniqueId
-				objectRef = objectRef.replace("vapp-", "").replace("vm-", "")
-			}
+			def restoreOpts = buildApiRestoreOpts(authConfig, backupResult, backup, server, cloud)
 			log.debug("restoreBackup:[apiUrl: {}, vmId: {}, backupSessionId: {}, opts: {}", authConfig.apiUrl, objectRef, backupSessionId, restoreOpts)
-			def restoreResults = apiService.restoreVM(authConfig.apiUrl, token, objectRef, backupSessionId, restoreOpts)
+			String restorePath = getRestorePath(authConfig, token, backupResult, objectRef, backupSessionId, restoreOpts)
+			String restoreSpec = buildRestoreSpec(restorePath, hierarchyRoot, opts.backupType, restoreOpts)
+			def restoreResults = apiService.restoreVM(authConfig.apiUrl, token, restorePath, restoreSpec)
+
 			log.debug("restoreBackup result: {}", restoreResults)
 			if(restoreResults.success) {
 				//update instance status to restoring
@@ -252,6 +230,191 @@ class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 		return rtn
 	}
 
+	default Map buildApiRestoreOpts(Map authConfig, BackupResult backupResult, Backup backup, ComputeServer server, Cloud cloud) {
+		def restoreOpts = [authConfig: authConfig, cloudTypeCode: cloud?.cloudType?.code, backupType: backupResult.backupType]
+		if(backupResult.getConfigProperty("restoreHref")) {
+			restoreOpts += backupResult.getConfigMap()
+		} else {
+			restoreOpts.restorePointRef = backupResult.getConfigProperty('restorePointRef') ?: backupResult.getConfigProperty('vmRestorePointRef')
+			if(backupResult.getConfigProperty('restorePointRef')) {
+				restoreOpts.restorePointId = VeeamUtils.extractVeeamUuid(backupResult.getConfigProperty('restorePointRef'))
+			}
+			if(backupResult.getConfigProperty('vmRestorePointRef')) {
+				restoreOpts.vmRestorePointid = VeeamUtils.extractVeeamUuid(backupResult.getConfigProperty('vmRestorePointRef'))
+			}
+		}
+		restoreOpts.vmId = server.externalId
+		restoreOpts.vmName = server.displayName
+
+		return restoreOpts
+	}
+
+	default String getRestoreObjectRef(String objectRef) {
+		return objectRef
+	}
+
+	default String getRestorePath(Map authConfig, String token, BackupResult backupResult, String objectRef, String backupSessionId, Map opts) {
+		log.debug("getRestorePath: ${authConfig}, ${token}, ${backupResult}, ${objectRef}, ${backupSessionId}, ${opts}")
+		def rtn = [success:false]
+		def headers = apiService.buildHeaders([:], token)
+		def query = [format: "Entity"]
+		def restoreLink
+
+		if(opts.restoreHref) {
+			def restoreType = opts.restoreType
+			def uri = new URI(opts.restoreHref)
+			HttpApiClient httpApiClient = new HttpApiClient()
+			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
+			def results = httpApiClient.callXmlApi(authConfig.apiUrl, uri.path, null, null, requestOpts, 'GET')
+			log.debug("got: ${results}")
+			rtn.success = results?.success
+			if(rtn.success == true) {
+				def response = new groovy.util.XmlSlurper().parseText(results.content)
+				response[restoreType].Links.Link.each { link ->
+					if(link['@Type'] == "Restore" || link['@Rel'] == "Restore") {
+						def restoreUrl = new URI(link['@Href']?.toString())
+						restoreLink = restoreUrl.path
+					}
+				}
+			}
+		}
+
+		// for everything not vcd
+		// the restore point is set in the backup result config
+		if(!restoreLink && (opts.restorePointId || opts.restoreRef)) {
+			def restorePointId = opts.restorePointId ?: opts.restoreRef
+			HttpApiClient httpApiClient = new HttpApiClient()
+			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
+			def results = httpApiClient.callXmlApi(authConfig.apiUrl, "/api/restorePoints/${restorePointId}/vmRestorePoints", null, null, requestOpts, 'GET')
+			log.debug("got: ${results}")
+			rtn.success = results?.success
+			if(rtn.success == true) {
+				def response = new groovy.util.XmlSlurper().parseText(results.content)
+				response.VmRestorePoint.Links.Link.each { link ->
+					if(link['@Type'] == "Restore" || link['@Rel'] == "Restore") {
+						def restoreUrl = new URI(link['@Href']?.toString())
+						restoreLink = restoreUrl.path
+					}
+				}
+			}
+		}
+
+		if(opts.vmRestorePointId || (opts.restorePointId && !restoreLink)) {
+			HttpApiClient httpApiClient = new HttpApiClient()
+			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
+			def results = httpApiClient.callXmlApi(authConfig.apiUrl, "/api/vmRestorePoints/${opts.vmRestorePointId ?: opts.restorePointId}", null, null, requestOpts, 'GET')
+			log.debug("got: ${results}")
+			rtn.success = results?.success
+			if(rtn.success == true) {
+				def response = new groovy.util.XmlSlurper().parseText(results.content)
+				response.Links.Link.each { link ->
+					if(link['@Rel'] == "Restore") {
+						def restoreUrl = new URI(link['@Href']?.toString())
+						restoreLink = restoreUrl.path
+					}
+				}
+			}
+		}
+
+		// we only have the backup session, find the restore resources
+		if(!restoreLink) {
+			HttpApiClient httpApiClient = new HttpApiClient()
+			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
+			def backupSessionResponse = httpApiClient.callJsonApi(authConfig.apiUrl, "/api/backupSessions/${backupSessionId}", requestOpts, 'GET')
+
+			log.debug("backupSession results: ${backupSessionResponse}")
+			//find restore points
+			def restorePointsLink
+			rtn.success = backupSessionResponse?.success
+			if(rtn.success == true) {
+				def backupSessionData = backupSessionResponse.data
+				log.debug("backup results retore links: ${backupSessionData.Links.Link}")
+				backupSessionData.Links.Link.each { link ->
+					if(link['@Type'] == "RestorePointReference") {
+						def restorePointsUrl = new URI(link['@Href'].toString())
+						restorePointsLink = "${restorePointsUrl.path}/vmRestorePoints"
+					}
+					if(link['@Type'] == "VmRestorePoint") {
+						def restoreUrl = new URI(link['@Href']?.toString())
+						restorePointsLink = restoreUrl.path
+					}
+				}
+			}
+
+			// probably a veeamzip, need to go find the restore point for the backup session
+			if(!restorePointsLink) {
+				def backupSessionData = backupSessionResponse.data
+				def backupName = backupSessionData.jobName // the backup session and the backup(result) should have the same name
+				def backupResults = fetchQuery(opts.authConfig, "Backup", [Name: backupName])
+				def restoreRefList = backupResults.data.refs?.ref?.links?.link?.find { it.type == "RestorePointReferenceList" }
+				if(restoreRefList) {
+					// get a list of restore points from the backup
+					def refListLink = new URI(restoreRefList.href)
+					requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
+					def refListResults = httpApiClient.callJsonApi(authConfig.apiUrl, refListLink.path, requestOpts, 'GET')
+					rtn.success = refListResults?.success
+					if(rtn.success == true) {
+						// we need the vm restore point to execute the restore
+						def refListResponse = XmlUtils.xmlToMap(refListResults.content)
+						refListResponse.RestorePoint.Links.Link.each { link ->
+							if(link['Type'] == "VmRestorePointReferenceList") {
+								def restoreUrl = new URI(link['Href']?.toString())
+								restorePointsLink = restoreUrl.path
+							}
+						}
+					}
+				}
+			}
+
+			if(restorePointsLink) {
+				requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
+				def restoreLinkResults = httpApiClient.callXmlApi(authConfig.apiUrl, "${restorePointsLink}", requestOpts, 'GET')
+				log.debug("got: ${backupSessionResponse}")
+				rtn.success = backupSessionResponse?.success
+				if(rtn.success == true) {
+					def response = new groovy.util.XmlSlurper().parseText(restoreLinkResults.content)
+					def restorePoint
+					if(response.name() == "VmRestorePoints") {
+						restorePoint = response.VmRestorePoint.find { it.HierarchyObjRef.text().toString().toLowerCase() == objectRef?.toLowerCase() || it.VmName.text().toString() == opts.vmName }
+						if(!restorePoint && opts.vCenterVmId) {
+							restorePoint = response.VmRestorePoint.find { it.HierarchyObjRef.text().toString().endsWith(opts.vCenterVmId) }
+						}
+					} else {
+						restorePoint = response
+					}
+
+					if(restorePoint) {
+						restorePoint.Links.Link.each { link ->
+							if(link['@Rel']?.toString() == "Restore") {
+								def restoreUrl = new URI(link['@Href']?.toString())
+								restoreLink = restoreUrl.path
+							}
+						}
+					} else {
+						rtn.msg = "Veeam restore point not found for VM"
+						rtn.success = false
+						log.error(rtn.msg)
+					}
+				}
+			}
+		}
+
+		return restoreLink
+	}
+
+	default String buildRestoreSpec(String restorePath, String hierarchyRoot, String backupType, Map opts) {
+		def xml = new StreamingMarkupBuilder().bind() {
+			RestoreSpec("xmlns": "http://www.veeam.com/ent/v1.0", "xmlns:xsd": "http://www.w3.org/2001/XMLSchema", "xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance") {
+				VmRestoreSpec() {
+					"PowerOnAfterRestore"(true)
+					"QuickRollback"(false)
+				}
+			}
+		}
+
+		return xml.toString()
+	}
+
 	/**
 	 * Periodically check for any updates to an in-progress restore. This method will be executed every 60 seconds for
 	 * the restore while the restore has a status of `START_REQUESTED` or `IN_PROGRESS`. Any other status will indicate
@@ -262,8 +425,7 @@ class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 	 * @return a {@link ServiceResponse} object. A ServiceResponse with a false success will indicate a failed
 	 * configuration and will halt the backup restore process.
 	 */
-	@Override
-	ServiceResponse refreshBackupRestoreResult(BackupRestore backupRestore, BackupResult backupResult) {
+	default ServiceResponse refreshBackupRestoreResult(BackupRestore backupRestore, BackupResult backupResult) {
 		log.debug "refreshBackupRestoreResult: ${backupRestore}, ${backupResult}"
 
 		ServiceResponse<BackupRestoreResponse> rtn = ServiceResponse.prepare(new BackupRestoreResponse(backupRestore))
@@ -324,7 +486,7 @@ class VeeamBackupRestoreProvider implements BackupRestoreProvider {
 		return rtn
 	}
 
-	ServiceResponse finalizeRestore(BackupRestore restore) {
+	default ServiceResponse finalizeRestore(BackupRestore restore) {
 		log.info("finalizeRestore: {}", restore)
 		def instance
 		try {

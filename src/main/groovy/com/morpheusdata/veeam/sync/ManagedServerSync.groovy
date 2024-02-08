@@ -6,7 +6,6 @@ import com.morpheusdata.core.data.DataQuery
 import com.morpheusdata.core.util.SyncTask
 import com.morpheusdata.model.BackupProvider
 import com.morpheusdata.model.ReferenceData
-import com.morpheusdata.veeam.VeeamBackupProvider
 import com.morpheusdata.veeam.VeeamPlugin
 import com.morpheusdata.veeam.services.ApiService
 import groovy.util.logging.Slf4j

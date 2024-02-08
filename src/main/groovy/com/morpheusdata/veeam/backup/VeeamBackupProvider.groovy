@@ -1,4 +1,4 @@
-package com.morpheusdata.veeam
+package com.morpheusdata.veeam.backup
 
 import com.morpheusdata.core.MorpheusContext
 import com.morpheusdata.core.Plugin
@@ -12,11 +12,14 @@ import com.morpheusdata.model.BackupProvider as BackupProviderModel
 import com.morpheusdata.model.Icon
 import com.morpheusdata.model.OptionType
 import com.morpheusdata.response.ServiceResponse
+import com.morpheusdata.veeam.backup.hyperv.VeeamHypervBackupTypeProvider
+import com.morpheusdata.veeam.backup.scvmm.VeeamScvmmBackupTypeProvider
 import com.morpheusdata.veeam.services.ApiService
 import com.morpheusdata.veeam.sync.*
+import com.morpheusdata.veeam.backup.vcd.VeeamVcdBackupTypeProvider
+import com.morpheusdata.veeam.backup.vmware.VeeamVMwareBackupTypeProvider
 import groovy.json.JsonOutput
 import groovy.util.logging.Slf4j
-import io.reactivex.rxjava3.core.Observable
 
 @Slf4j
 class VeeamBackupProvider extends AbstractBackupProvider {
@@ -30,7 +33,7 @@ class VeeamBackupProvider extends AbstractBackupProvider {
 		this.apiService = apiService
 
 		// register VMWare backup provider
-		VeeamVMWareBackupTypeProvider vmwareProvider = new VeeamVMWareBackupTypeProvider(plugin, morpheus, apiService)
+		VeeamVMwareBackupTypeProvider vmwareProvider = new VeeamVMwareBackupTypeProvider(plugin, morpheus, apiService)
 		plugin.registerProvider(vmwareProvider)
 		addScopedProvider(vmwareProvider, "vmware", null)
 

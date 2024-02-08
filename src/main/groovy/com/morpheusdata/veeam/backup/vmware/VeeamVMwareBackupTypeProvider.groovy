@@ -1,14 +1,17 @@
-package com.morpheusdata.veeam
+package com.morpheusdata.veeam.backup.vmware
 
 import com.morpheusdata.core.MorpheusContext
 import com.morpheusdata.core.Plugin
-import com.morpheusdata.core.backup.AbstractBackupTypeProvider
 import com.morpheusdata.core.backup.BackupExecutionProvider
 import com.morpheusdata.core.backup.BackupRestoreProvider
 import com.morpheusdata.core.backup.BackupTypeProvider
 import com.morpheusdata.model.BackupProvider as BackupProviderModel
+import com.morpheusdata.model.ComputeServer
 import com.morpheusdata.model.OptionType
 import com.morpheusdata.response.ServiceResponse
+import com.morpheusdata.veeam.backup.VeeamBackupExecutionProviderInterface
+import com.morpheusdata.veeam.backup.VeeamBackupRestoreProviderInterface
+import com.morpheusdata.veeam.backup.VeeamBackupTypeProvider
 import com.morpheusdata.veeam.services.ApiService
 import groovy.util.logging.Slf4j
 
@@ -18,16 +21,13 @@ import groovy.util.logging.Slf4j
  * the {@link BackupTypeProvider BackupTypeProviders} implemented within the provider.
  */
 @Slf4j
-class VeeamVMWareBackupTypeProvider extends AbstractBackupTypeProvider {
+class VeeamVMwareBackupTypeProvider extends VeeamBackupTypeProvider {
 
 	BackupExecutionProvider executionProvider
 	BackupRestoreProvider restoreProvider
 
-	ApiService apiService
-
-	VeeamVMWareBackupTypeProvider(Plugin plugin, MorpheusContext morpheusContext, ApiService apiService) {
-		super(plugin, morpheusContext)
-		this.apiService = apiService
+	VeeamVMwareBackupTypeProvider(Plugin plugin, MorpheusContext morpheusContext, ApiService apiService) {
+		super(plugin, morpheusContext, apiService)
 	}
 
 	/**
@@ -148,15 +148,31 @@ class VeeamVMWareBackupTypeProvider extends AbstractBackupTypeProvider {
 	Collection<OptionType> getOptionTypes() {
 		return new ArrayList<OptionType>()
 	}
+
+	BackupTypeProvider getBackupTypeProvider() {
+		return backupTypeProvider
+	}
+
+	String getCloudType() {
+		return "VMware"
+	}
+
+	String getManagedServerType() {
+		return "VC"
+	}
+
+	String getVmRefId(ComputeServer computeServer) {
+		return computeServer.externalId
+	}
 	
 	/**
 	 * Get the backup provider which will be responsible for all the operations related to backup executions.
 	 * @return a {@link BackupExecutionProvider} providing methods for backup execution.
 	 */
 	@Override
-	VeeamBackupExecutionProvider getExecutionProvider() {
+	VeeamBackupExecutionProviderInterface getExecutionProvider() {
 		if(!this.executionProvider) {
-			this.executionProvider = new VeeamBackupExecutionProvider(plugin, morpheus, apiService)
+			this.executionProvider = new VeeamVMwareBackupExecutionProviderInterface(plugin, morpheus, this, apiService)
 		}
 		return this.executionProvider
 	}
@@ -166,9 +182,9 @@ class VeeamVMWareBackupTypeProvider extends AbstractBackupTypeProvider {
 	 * @return a {@link BackupRestoreProvider} providing methods for backup restore operations.
 	 */
 	@Override
-	VeeamBackupRestoreProvider getRestoreProvider() {
+	VeeamBackupRestoreProviderInterface getRestoreProvider() {
 		if(!this.restoreProvider) {
-			this.restoreProvider = new VeeamBackupRestoreProvider(plugin, morpheus, apiService)
+			this.restoreProvider = new VeeamVMwareBackupRestoreProviderInterface(plugin, morpheus, this, apiService)
 		}
 		return this.restoreProvider
 	}

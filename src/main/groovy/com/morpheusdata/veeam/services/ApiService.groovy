@@ -494,22 +494,20 @@ class ApiService {
 	}
 
 	//vm utils
-	static findVm(Map authConfig, String externalId, List managedServers, Map opts) {
-		log.debug("findVm: ${externalId}, ManagedServers: ${managedServers}, opts: ${opts}")
+	static findVm(Map authConfig, List vmObjectRefs, Map opts) {
+		log.debug("findVm, vmObjectRefs: ${vmObjectRefs}, opts: ${opts}")
 		def rtn = [success:false, vmId:null]
 		def tokenResults = getToken(authConfig)
 		if(tokenResults.success == true) {
 			//search all servers
-			managedServers?.each { managedServer ->
+			vmObjectRefs?.each { vmObjectRef ->
 				if(rtn.success != true) {
-					def hostRoot = managedServer.contains("HierarchyRoot") ? managedServer : "urn:veeam:HierarchyRoot:${managedServer}"
-					def results = lookupVm(authConfig.apiUrl, tokenResults.token, opts.cloudType, hostRoot, externalId)
+					def results = lookupVm(authConfig.apiUrl, tokenResults.token, vmObjectRef)
 					//check results
 					log.debug("findVm results: ${results}")
 					if(results.success == true) {
 						rtn.vmId = results.vmId
 						rtn.vmName = results.vmName
-						rtn.hierarchyRoot = hostRoot
 						rtn.success = true
 					}
 				}
@@ -533,14 +531,14 @@ class ApiService {
 	 * @return A map containing the result of the operation.
 	 *         This includes a success flag and the VM ID if the VM was found.
 	 */
-	static waitForVm(Map authConfig, String vmExternalId, List managedServers, Long maxWaitTime = 300, Map opts) {
+	static waitForVm(Map authConfig, List vmObjectRefs, Long maxWaitTime = 300, Map opts) {
 		def rtn = [success:false, error:false, data:null, vmId:null]
 		def attempt = 0
 		def keepGoing = true
 		def maxAttempts = maxWaitTime / taskSleepInterval
 		while(keepGoing == true && attempt < maxAttempts) {
 			//load the vm
-			def results = findVm(authConfig, vmExternalId, managedServers, opts)
+			def results = findVm(authConfig, vmObjectRefs, opts)
 			if(results.success == true) {
 				rtn.success = true
 				rtn.data = results.data
@@ -559,7 +557,7 @@ class ApiService {
 	}
 
 	//backup
-	static createBackupJobBackup(Map authConfig, String jobId, List managedServers, Map opts) {
+	static createBackupJobBackup(Map authConfig, String jobId, vmId, vmName, Map opts) {
 		log.debug("createBackupJobBackup: ${opts}")
 		def rtn = [success:false, backupId:null, data:null]
 		def tokenResults = getToken(authConfig)
@@ -569,130 +567,119 @@ class ApiService {
 			def query = [format:'Entity']
 			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 			HttpApiClient httpApiClient = new HttpApiClient()
-			//need managed servers
-			def findResults = waitForVm(authConfig, opts.externalId, managedServers, 600, opts)
-			log.info("wait results: ${findResults}")
-			if(findResults.success == true) {
-				def vmId = findResults.vmId
-				def vmName = findResults.vmName
-				rtn.hierarchyObjecRef = findResults.vmId
-				rtn.hierarchyRoot = findResults.hierarchyRoot
-				//load up the existing job
-				def results = httpApiClient.callXmlApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'GET')
-				log.info("job results: ${results}")
-				if(results.success == true) {
-					//save off the existing
-					def existingItems = []
-					def processingOpts
-					results.data.ObjectInJob.each { vmInJob ->
-						if(vmInJob.ObjectInJobId) {
-							existingItems << vmInJob.ObjectInJobId.toString()
-							if(processingOpts == null)
-								processingOpts = vmInJob.GuestProcessingOptions
-						}
-					}
-					//add new
-					def requestXml = new StreamingMarkupBuilder().bind {
-						CreateObjectInJobSpec('xmlns':'http://www.veeam.com/ent/v1.0', 'xmlns:xsd':'http://www.w3.org/2001/XMLSchema', 'xmlns:xsi':'http://www.w3.org/2001/XMLSchema-instance') {
-							'HierarchyObjRef'(vmId)
-							'HierarchyObjName'(vmName)
-						}
-					}
-					//add it
-					log.debug("requestOpts: ${requestOpts}")
-					requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query, body: requestXml.toString())
-					def addResults = httpApiClient.callXmlApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'POST')
-					log.debug("addResults: ${addResults}")
-					if(addResults.success == true) {
-						//get task id and wait
-						def taskId = addResults.data?.TaskId.toString()
-						log.debug("taskId: ${taskId}")
-						if(taskId) {
-							def taskResults = waitForTask(authConfig, taskId)
-							if(taskResults.success == true) {
-								rtn.success = true
-								log.debug("taskResults: ${taskResults}")
-								//get the backup id?
-								//remove existing?
-								if(opts.removeJobs == true) {
-									requestOpts = new HttpApiClient.RequestOptions(headers:headers)
-									existingItems.each { existingId ->
-										def itemPath = apiPath + '/' + existingId
-										def deleteResults = httpApiClient.callXmlApi(authConfig.apiUrl, itemPath, null, null, requestOpts, 'DELETE')
-										def deleteTaskId = deleteResults.data?.TaskId?.toString()
-										if(deleteTaskId) {
-											def deleteTaskResults = waitForTask(authConfig, deleteTaskId)
-											log.debug("deleteResults: ${deleteResults}")
-										}
-									}
-								}
-								//get the job and id
-								def jobObject
-								def jobDetailAttempts = 0
-								def maxJobDetailAttempts = 10
-								while(!jobObject && jobDetailAttempts < maxJobDetailAttempts) {
-									def jobResults = loadBackupJob(authConfig, jobId, opts)
-									if(jobResults.success == true) {
-										if(jobResults.job.jobInfo?.backupJobInfo?.includes?.objectInJob instanceof Map) {
-											log.debug("ONLY FOUND ONE OBJECT IN JOB")
-											def tmpJobObj = jobResults.job.jobInfo?.backupJobInfo?.includes?.objectInJob
-											if(opts.externalId) {
-												def jobObjMor = VeeamUtils.extractMOR(tmpJobObj.hierarchyObjRef)
-												def jobObjUid = VeeamUtils.extractVeeamUuid(tmpJobObj.hierarchyObjRef)
-												if(opts.externalId == jobObjMor || opts.externalId.contains(jobObjUid)) {
-													jobObject = tmpJobObj
-												}
-											}
-										} else {
-											log.debug("FOUND MULTIPLE JOB OBJECTS, FIND THE RIGHT ONE")
-											jobObject = jobResults.job.jobInfo?.backupJobInfo?.includes?.objectInJob?.find {
-												if(opts.externalId) {
-													def itMor = VeeamUtils.extractMOR(it.hierarchyObjRef)
-													return opts.externalId == itMor
-												} else {
-													return vmName == it.name
-												}
-											}
-										}
-										if(rtn.backupId == null && jobObject) {
-											log.debug("JOB OBJECT WAS FOUND")
-											rtn.backupId = jobObject.objectInJobId
-											rtn.objectId = jobResults.job.uid
-											rtn.success = true
-										}
 
-									} else {
-										//couldn't find the job
-									}
-									if(!jobObject) {
-										log.debug("DIDN'T FIND THE JOB OBJECT WE WERE LOOKING FOR")
-										jobDetailAttempts++
-										sleep(3000)
+			//load up the existing job
+			def results = httpApiClient.callXmlApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'GET')
+			log.info("job results: ${results}")
+			if(results.success == true) {
+				//save off the existing
+				def existingItems = []
+				def processingOpts
+				results.data.ObjectInJob.each { vmInJob ->
+					if(vmInJob.ObjectInJobId) {
+						existingItems << vmInJob.ObjectInJobId.toString()
+						if(processingOpts == null)
+							processingOpts = vmInJob.GuestProcessingOptions
+					}
+				}
+				//add new
+				def requestXml = new StreamingMarkupBuilder().bind {
+					CreateObjectInJobSpec('xmlns':'http://www.veeam.com/ent/v1.0', 'xmlns:xsd':'http://www.w3.org/2001/XMLSchema', 'xmlns:xsi':'http://www.w3.org/2001/XMLSchema-instance') {
+						'HierarchyObjRef'(vmId)
+						'HierarchyObjName'(vmName)
+					}
+				}
+				//add it
+				log.debug("requestOpts: ${requestOpts}")
+				requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query, body: requestXml.toString())
+				def addResults = httpApiClient.callXmlApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'POST')
+				log.debug("addResults: ${addResults}")
+				if(addResults.success == true) {
+					//get task id and wait
+					def taskId = addResults.data?.TaskId.toString()
+					log.debug("taskId: ${taskId}")
+					if(taskId) {
+						def taskResults = waitForTask(authConfig, taskId)
+						if(taskResults.success == true) {
+							rtn.success = true
+							log.debug("taskResults: ${taskResults}")
+							//get the backup id?
+							//remove existing?
+							if(opts.removeJobs == true) {
+								requestOpts = new HttpApiClient.RequestOptions(headers:headers)
+								existingItems.each { existingId ->
+									def itemPath = apiPath + '/' + existingId
+									def deleteResults = httpApiClient.callXmlApi(authConfig.apiUrl, itemPath, null, null, requestOpts, 'DELETE')
+									def deleteTaskId = deleteResults.data?.TaskId?.toString()
+									if(deleteTaskId) {
+										def deleteTaskResults = waitForTask(authConfig, deleteTaskId)
+										log.debug("deleteResults: ${deleteResults}")
 									}
 								}
-							} else {
-								//error waiting for task to finish
-								rtn.msg = taskResults.msg ?: "Failed to find backup creation task in Veeam."
+							}
+							//get the job and id
+							def jobObject
+							def jobDetailAttempts = 0
+							def maxJobDetailAttempts = 10
+							while(!jobObject && jobDetailAttempts < maxJobDetailAttempts) {
+								def jobResults = loadBackupJob(authConfig, jobId, opts)
+								if(jobResults.success == true) {
+									if(jobResults.job.jobInfo?.backupJobInfo?.includes?.objectInJob instanceof Map) {
+										log.debug("ONLY FOUND ONE OBJECT IN JOB")
+										def tmpJobObj = jobResults.job.jobInfo?.backupJobInfo?.includes?.objectInJob
+										if(opts.externalId) {
+											def jobObjMor = VeeamUtils.extractMOR(tmpJobObj.hierarchyObjRef)
+											def jobObjUid = VeeamUtils.extractVeeamUuid(tmpJobObj.hierarchyObjRef)
+											if(opts.externalId == jobObjMor || opts.externalId.contains(jobObjUid)) {
+												jobObject = tmpJobObj
+											}
+										}
+									} else {
+										log.debug("FOUND MULTIPLE JOB OBJECTS, FIND THE RIGHT ONE")
+										jobObject = jobResults.job.jobInfo?.backupJobInfo?.includes?.objectInJob?.find {
+											if(opts.externalId) {
+												def itMor = VeeamUtils.extractMOR(it.hierarchyObjRef)
+												return opts.externalId == itMor
+											} else {
+												return vmName == it.name
+											}
+										}
+									}
+									if(rtn.backupId == null && jobObject) {
+										log.debug("JOB OBJECT WAS FOUND")
+										rtn.backupId = jobObject.objectInJobId
+										rtn.objectId = jobResults.job.uid
+										rtn.success = true
+									}
+
+								} else {
+									//couldn't find the job
+								}
+								if(!jobObject) {
+									log.debug("DIDN'T FIND THE JOB OBJECT WE WERE LOOKING FOR")
+									jobDetailAttempts++
+									sleep(3000)
+								}
 							}
 						} else {
-							// failed to create task, no task ID returned
-							rtn.msg = "Failed to create request for backup creation in Veeam."
-							log.error("Failed to create back up include in backup job, task ID not found in API response: ${addResults}")
+							//error waiting for task to finish
+							rtn.msg = taskResults.msg ?: "Failed to find backup creation task in Veeam."
 						}
 					} else {
-						//error adding to job
-						rtn.msg = "Failed to create backup job."
-						log.error("Failed to create backup job: ${addResults}")
+						// failed to create task, no task ID returned
+						rtn.msg = "Failed to create request for backup creation in Veeam."
+						log.error("Failed to create back up include in backup job, task ID not found in API response: ${addResults}")
 					}
 				} else {
-					rtn.msg = "Unable to load details for job ${jobId}."
-					log.error("Failed to load job details: ${results}")
+					//error adding to job
+					rtn.msg = "Failed to create backup job."
+					log.error("Failed to create backup job: ${addResults}")
 				}
 			} else {
-				//count not find the vm
-				rtn.msg = "Failed to find VM in Veeam. Ensure the VM is accessible to the Veeam backup server."
-				log.error("Unable to locate VM in Veeam: ${findResults}")
+				rtn.msg = "Unable to load details for job ${jobId}."
+				log.error("Failed to load job details: ${results}")
 			}
+
 		}
 		return rtn
 	}
@@ -1168,194 +1155,28 @@ class ApiService {
 		return rtn
 	}
 
-	static restoreVM(url, token, objectRef, backupSessionId, opts=[:]) {
-		log.debug("restoreVM: ${url}, ${objectRef}, ${backupSessionId}, ${opts}")
+	// this should just take a restore point or a restore endpoint URL, finding the restore info can go in the restor execution service
+	static restoreVM(String url, String token, String restorePath, String restoreSpec, opts=[:]) {
+		log.debug("restoreVM: ${url}, ${restorePath}, ${restoreSpec} ${opts}")
 		def rtn = [success:false]
 		def headers = buildHeaders([:], token)
 		def query = [format: "Entity"]
-		def restoreLink
+		def restoreTaskId
 
-		if(opts.restoreHref) {
-			def restoreType = opts.restoreType
-			def uri = new URI(opts.restoreHref)
-			HttpApiClient httpApiClient = new HttpApiClient()
-			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
-			def results = httpApiClient.callXmlApi(url, uri.path, null, null, requestOpts, 'GET')
-			log.debug("got: ${results}")
-			rtn.success = results?.success
-			if(rtn.success == true) {
-				def response = new groovy.util.XmlSlurper().parseText(results.content)
-				response[restoreType].Links.Link.each { link ->
-					if(link['@Type'] == "Restore" || link['@Rel'] == "Restore") {
-						def restoreUrl = new URI(link['@Href']?.toString())
-						restoreLink = restoreUrl.path
-					}
-				}
-			}
-		}
-
-		// for everything not vcd
-		// the restore point is set in the backup result config
-		if(!restoreLink && (opts.restorePointId || opts.restoreRef)) {
-			def restorePointId = opts.restorePointId ?: opts.restoreRef
-			HttpApiClient httpApiClient = new HttpApiClient()
-			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
-			def results = httpApiClient.callXmlApi(url, "/api/restorePoints/${restorePointId}/vmRestorePoints", null, null, requestOpts, 'GET')
-			log.debug("got: ${results}")
-			rtn.success = results?.success
-			if(rtn.success == true) {
-				def response = new groovy.util.XmlSlurper().parseText(results.content)
-				response.VmRestorePoint.Links.Link.each { link ->
-					if(link['@Type'] == "Restore" || link['@Rel'] == "Restore") {
-						def restoreUrl = new URI(link['@Href']?.toString())
-						restoreLink = restoreUrl.path
-					}
-				}
-			}
-		}
-		if(opts.vmRestorePointId || (opts.restorePointId && !restoreLink)) {
-			HttpApiClient httpApiClient = new HttpApiClient()
-			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
-			def results = httpApiClient.callXmlApi(url, "/api/vmRestorePoints/${opts.vmRestorePointId ?: opts.restorePointId}", null, null, requestOpts, 'GET')
-			log.debug("got: ${results}")
-			rtn.success = results?.success
-			if(rtn.success == true) {
-				def response = new groovy.util.XmlSlurper().parseText(results.content)
-				response.Links.Link.each { link ->
-					if(link['@Rel'] == "Restore") {
-						def restoreUrl = new URI(link['@Href']?.toString())
-						restoreLink = restoreUrl.path
-					}
-				}
-			}
-		}
-
-		// we only have the backup session, find the restore resources
-		if(!restoreLink) {
-			HttpApiClient httpApiClient = new HttpApiClient()
-			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
-			def backupSessionResponse = httpApiClient.callJsonApi(url, "/api/backupSessions/${backupSessionId}", requestOpts, 'GET')
-
-			log.debug("backupSession results: ${backupSessionResponse}")
-			//find restore points
-			def restorePointsLink
-			rtn.success = backupSessionResponse?.success
-			if(rtn.success == true) {
-				def backupSessionData = backupSessionResponse.data
-				log.debug("backup results retore links: ${backupSessionData.Links.Link}")
-				backupSessionData.Links.Link.each { link ->
-					if(link['@Type'] == "RestorePointReference") {
-						def restorePointsUrl = new URI(link['@Href'].toString())
-						restorePointsLink = "${restorePointsUrl.path}/vmRestorePoints"
-					}
-					if(link['@Type'] == "VmRestorePoint") {
-						def restoreUrl = new URI(link['@Href']?.toString())
-						restorePointsLink = restoreUrl.path
-					}
-				}
-			}
-
-
-			// probably a veeamzip, need to go find the restore point for the backup session
-			if(!restorePointsLink) {
-				def backupSessionData = backupSessionResponse.data
-				def backupName = backupSessionData.jobName // the backup session and the backup(result) should have the same name
-				def backupResults = fetchQuery(opts.authConfig, "Backup", [Name: backupName])
-				def restoreRefList = backupResults.data.refs?.ref?.links?.link?.find { it.type == "RestorePointReferenceList" }
-				if(restoreRefList) {
-					// get a list of restore points from the backup
-					def refListLink = new URI(restoreRefList.href)
-					requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
-					def refListResults = httpApiClient.callJsonApi(url, refListLink.path, requestOpts, 'GET')
-					rtn.success = refListResults?.success
-					if(rtn.success == true) {
-						// we need the vm restore point to execute the restore
-						def refListResponse = XmlUtils.xmlToMap(refListResults.content)
-						refListResponse.RestorePoint.Links.Link.each { link ->
-							if(link['Type'] == "VmRestorePointReferenceList") {
-								def restoreUrl = new URI(link['Href']?.toString())
-								restorePointsLink = restoreUrl.path
-							}
-						}
-					}
-				}
-			}
-
-
-			if(restorePointsLink) {
-				requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
-				def restoreLinkResults = httpApiClient.callXmlApi(url, "${restorePointsLink}", requestOpts, 'GET')
-				log.debug("got: ${backupSessionResponse}")
-				rtn.success = backupSessionResponse?.success
-				if(rtn.success == true) {
-					def response = new groovy.util.XmlSlurper().parseText(restoreLinkResults.content)
-					def restorePoint
-					if(response.name() == "VmRestorePoints") {
-						restorePoint = response.VmRestorePoint.find { it.HierarchyObjRef.text().toString().toLowerCase() == objectRef?.toLowerCase() || it.VmName.text().toString() == opts.vmName }
-						if(!restorePoint && opts.vCenterVmId) {
-							restorePoint = response.VmRestorePoint.find { it.HierarchyObjRef.text().toString().endsWith(opts.vCenterVmId) }
-						}
-					} else {
-						restorePoint = response
-					}
-
-					if(restorePoint) {
-						restorePoint.Links.Link.each { link ->
-							if(link['@Rel']?.toString() == "Restore") {
-								def restoreUrl = new URI(link['@Href']?.toString())
-								restoreLink = restoreUrl.path
-							}
-						}
-					} else {
-						rtn.msg = "Veeam restore point not found for VM"
-						rtn.success = false
-						log.error(rtn.msg)
-					}
-				}
-			}
-		}
-
-		//execute the restore
-		def taskId
-		if(restoreLink) {
-			log.debug("Performing restore with endpoint: ${restoreLink}")
-			def xml
-			if(opts.cloudTypeCode == 'vcd' && opts.backupType != "veeamzip") {
-				def restorePointUid = VeeamUtils.extractVeeamUuid(restoreLink)
-				def hierarchyRootUid = VeeamUtils.extractVeeamUuid(opts.hierarchyRoot)
-				xml = new StreamingMarkupBuilder().bind() {
-					RestoreSpec("xmlns": "http://www.veeam.com/ent/v1.0", "xmlns:xsd": "http://www.w3.org/2001/XMLSchema", "xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance") {
-						vCloudVmRestoreSpec() {
-							"PowerOnAfterRestore"(true)
-							"HierarchyRootUid"(hierarchyRootUid)
-							vAppRef("urn:${VeeamUtils.CLOUD_TYPE_VCD}:Vapp:${hierarchyRootUid}.urn:vcloud:vapp:${opts.vAppId}")
-							VmRestoreParameters() {
-								VmRestorePointUid("urn:veeam:VmRestorePoint:${restorePointUid}")
-							}
-						}
-					}
-				}
-			} else {
-				xml = new StreamingMarkupBuilder().bind() {
-					RestoreSpec("xmlns": "http://www.veeam.com/ent/v1.0", "xmlns:xsd": "http://www.w3.org/2001/XMLSchema", "xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance") {
-						VmRestoreSpec() {
-							"PowerOnAfterRestore"(true)
-							"QuickRollback"(false)
-						}
-					}
-				}
-			}
-			def body = xml.toString()
-			log.debug "body: ${body}"
+		// initiate the restore
+		if(restorePath) {
+			log.debug("Performing restore with endpoint: ${restorePath}")
+			def body = restoreSpec
+			log.debug("body: ${body}")
 			def restoreQuery = query + [action: 'restore']
 			HttpApiClient httpApiClient = new HttpApiClient()
 			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams:restoreQuery, body: body)
-			def results = httpApiClient.callXmlApi(url, restoreLink, requestOpts, 'POST')
+			def results = httpApiClient.callXmlApi(url, restorePath, requestOpts, 'POST')
 			rtn.success = results?.success
 			if(rtn.success == true) {
 				def response = new groovy.util.XmlSlurper().parseText(results.content)
 				//get the restore session id
-				taskId = response.TaskId
+				restoreTaskId = response.TaskId
 			}
 		} else if(!rtn.msg) {
 			log.debug("Unable to perform restore, no restore link found.")
@@ -1363,8 +1184,11 @@ class ApiService {
 			rtn.success = false
 			log.error(rtn.msg)
 		}
-		if(taskId) {
-			def restoreTaskResults = waitForTask([token: token, apiUrl: url, basePath:'/api'], taskId.toString())
+
+
+		// get the restore task details
+		if(restoreTaskId) {
+			def restoreTaskResults = waitForTask([token: token, apiUrl: url, basePath:'/api'], restoreTaskId.toString())
 			rtn.success = restoreTaskResults?.success
 			if(rtn.success == true) {
 				restoreTaskResults.links.each{ link ->
@@ -1416,22 +1240,20 @@ class ApiService {
 	}
 
 	//lookup the veeam VM ID given the veeam managed server and the vmware VM ref ID
-	static lookupVm(url, token, cloudType, hierarchyRoot, vmRefId) {
+	static lookupVm(url, token, vmHierarchyRef) {
 		def rtn = [success:false]
-		rtn = getVmId(url, token, cloudType, hierarchyRoot, vmRefId)
+		rtn = getVmId(url, token, vmHierarchyRef)
 		if(!rtn.vmId){
-			log.error("Failed to find VM object in Veeam: ${vmRefId}")
+			log.error("Failed to find VM object in Veeam: ${vmHierarchyRef}")
 		}
 		return rtn
 	}
 
 	//get the veeam VM ID given the veeam managed server ID (hiearchy root) and vmware VM ref ID
-	static getVmId(url, token, cloudType, hierarchyRoot, vmRefId) {
+	static getVmId(url, token, vmHierachyRef) {
 		def rtn = [success:false]
-		//construct the object ref
-		def vmId = VeeamUtils.getVmHierarchyObjRef(vmRefId, hierarchyRoot, cloudType)
 		def headers = buildHeaders([:], token)
-		def query = [hierarchyRef: vmId]
+		def query = [hierarchyRef: vmHierachyRef]
 		log.debug("getVmId query: ${query}")
 		HttpApiClient httpApiClient = new HttpApiClient()
 		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)

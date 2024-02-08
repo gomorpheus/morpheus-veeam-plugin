@@ -1,14 +1,17 @@
-package com.morpheusdata.veeam
+package com.morpheusdata.veeam.backup.hyperv
 
 import com.morpheusdata.core.MorpheusContext
 import com.morpheusdata.core.Plugin
-import com.morpheusdata.core.backup.AbstractBackupTypeProvider
 import com.morpheusdata.core.backup.BackupExecutionProvider
 import com.morpheusdata.core.backup.BackupRestoreProvider
 import com.morpheusdata.core.backup.BackupTypeProvider
 import com.morpheusdata.model.BackupProvider as BackupProviderModel
+import com.morpheusdata.model.ComputeServer
 import com.morpheusdata.model.OptionType
 import com.morpheusdata.response.ServiceResponse
+import com.morpheusdata.veeam.backup.VeeamBackupExecutionProviderInterface
+import com.morpheusdata.veeam.backup.VeeamBackupRestoreProviderInterface
+import com.morpheusdata.veeam.backup.VeeamBackupTypeProvider
 import com.morpheusdata.veeam.services.ApiService
 import groovy.util.logging.Slf4j
 
@@ -18,16 +21,13 @@ import groovy.util.logging.Slf4j
  * the {@link BackupTypeProvider BackupTypeProviders} implemented within the provider.
  */
 @Slf4j
-class VeeamScvmmBackupTypeProvider extends AbstractBackupTypeProvider {
+class VeeamHypervBackupTypeProvider extends VeeamBackupTypeProvider {
 
 	BackupExecutionProvider executionProvider
 	BackupRestoreProvider restoreProvider
 
-	ApiService apiService
-
-	VeeamScvmmBackupTypeProvider(Plugin plugin, MorpheusContext morpheusContext, ApiService apiService) {
-		super(plugin, morpheusContext)
-		this.apiService = apiService
+	VeeamHypervBackupTypeProvider(Plugin plugin, MorpheusContext morpheusContext, ApiService apiService) {
+		super(plugin, morpheusContext, apiService)
 	}
 
 	/**
@@ -37,7 +37,7 @@ class VeeamScvmmBackupTypeProvider extends AbstractBackupTypeProvider {
 	 */
 	@Override
 	String getCode() {
-		return "veeamScvmmBackup"
+		return "veeamHypervBackup"
 	}
 
 	/**
@@ -48,7 +48,7 @@ class VeeamScvmmBackupTypeProvider extends AbstractBackupTypeProvider {
 	 */
 	@Override
 	String getName() {
-		return "veeam-scvmm-backupTypeProvider"
+		return "veeam-hyperv-backupTypeProvider"
 	}
 	
 	/**
@@ -148,15 +148,27 @@ class VeeamScvmmBackupTypeProvider extends AbstractBackupTypeProvider {
 	Collection<OptionType> getOptionTypes() {
 		return new ArrayList<OptionType>()
 	}
+
+	String getCloudType() {
+		return "HyperV"
+	}
+
+	String getManagedServerType() {
+		return "HvServer"
+	}
+
+	String getVmRefId(ComputeServer computeServer) {
+		return null
+	}
 	
 	/**
 	 * Get the backup provider which will be responsible for all the operations related to backup executions.
 	 * @return a {@link BackupExecutionProvider} providing methods for backup execution.
 	 */
 	@Override
-	VeeamBackupExecutionProvider getExecutionProvider() {
+	VeeamBackupExecutionProviderInterface getExecutionProvider() {
 		if(!this.executionProvider) {
-			this.executionProvider = new VeeamBackupExecutionProvider(plugin, morpheus, apiService)
+			this.executionProvider = new VeeamHypervBackupExecutionProviderInterface(plugin, morpheus, this, apiService)
 		}
 		return this.executionProvider
 	}
@@ -166,9 +178,9 @@ class VeeamScvmmBackupTypeProvider extends AbstractBackupTypeProvider {
 	 * @return a {@link BackupRestoreProvider} providing methods for backup restore operations.
 	 */
 	@Override
-	VeeamBackupRestoreProvider getRestoreProvider() {
+	VeeamBackupRestoreProviderInterface getRestoreProvider() {
 		if(!this.restoreProvider) {
-			this.restoreProvider = new VeeamBackupRestoreProvider(plugin, morpheus, apiService)
+			this.restoreProvider = new VeeamHypervBackupRestoreProviderInterface(plugin, morpheus, this, apiService)
 		}
 		return this.restoreProvider
 	}

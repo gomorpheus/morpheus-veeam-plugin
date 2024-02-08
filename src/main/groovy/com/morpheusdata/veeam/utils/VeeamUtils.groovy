@@ -15,11 +15,6 @@ class VeeamUtils {
 	static CLOUD_TYPE_SCVMM = "Scvmm"
 	static CLOUD_TYPE_VCD = "vCloud"
 
-	static MANAGED_SERVER_TYPE_VCENTER = "VC"
-	static MANAGED_SERVER_TYPE_HYPERV = "HvServer"
-	static MANAGED_SERVER_TYPE_SCVMM = "Scvmm"
-	static MANAGED_SERVER_TYPE_VCD = "VcdSystem"
-
 	static getBackupStatus(backupSessionState) {
 		log.debug("getBackupStatus: ${backupSessionState}")
 		def status = BackupResult.Status.IN_PROGRESS.toString()
@@ -97,14 +92,13 @@ class VeeamUtils {
 		return rtn
 	}
 
-	static getVmHierarchyObjRef(Backup backup, ComputeServer server) {
+	static getVmHierarchyObjRef(Backup backup, ComputeServer server, String cloudType) {
 		def objRef = backup.getConfigProperty('hierarchyObjRef')
 		if(!objRef) {
 			def hierarchyRootUid = backup.getConfigProperty("veeamHierarchyRootUid")
 			def managedServerId = hierarchyRootUid ? hierarchyRootUid : backup.getConfigProperty("veeamManagedServerId")?.split(":")?.getAt(0)
 			log.debug("server: ${server}, cloud: ${server?.cloud}, cloudType: ${server?.cloud?.cloudType}, cloudId: ${server?.cloud?.id}}")
 			if(server) {
-				def cloudType = getCloudTypeFromZoneType(server.cloud.cloudType.code)
 				objRef = getVmHierarchyObjRef(server.externalId, managedServerId, cloudType)
 			}
 		}
@@ -112,47 +106,17 @@ class VeeamUtils {
 
 		return objRef
 	}
+	static getVmHierarchyObjRef(Backup backup, String vmRefId, String cloudType) {
+		String managedServerId = getHierarchyRoot(backup)
+		return getVmHierarchyObjRef(vmRefId, managedServerId, cloudType)
+	}
 
 	static getVmHierarchyObjRef(vmRefId, managedServerId, cloudType) {
 		def parentServerId = managedServerId
 		if(managedServerId.contains("urn:veeam")) {
 			parentServerId = extractVeeamUuid(managedServerId)
 		}
-		def rtn = "urn:${cloudType}:"
-		rtn += cloudType == CLOUD_TYPE_VCD ? "Vapp" : "Vm"
-		rtn += ":${parentServerId}.${vmRefId}"
-
-		return rtn
-	}
-
-	static getCloudTypeFromZoneType(String cloudTypeCode) {
-		log.debug("getCloudTypeFromZoneType: ${cloudTypeCode}")
-		def rtn
-
-		if (cloudTypeCode == 'hyperv' || cloudTypeCode == 'scvmm') {
-			rtn = CLOUD_TYPE_HYPERV
-		} else if (cloudTypeCode == 'vmware') {
-			rtn = CLOUD_TYPE_VMWARE
-		} else if(cloudTypeCode == 'vcd') {
-			rtn = CLOUD_TYPE_VCD
-		}
-
-		return rtn
-	}
-
-	static getManagedServerTypeFromZoneType(String cloudTypeCode) {
-		def rtn = cloudTypeCode == 'vmware' ? 'VC' : 'HV'
-		if(cloudTypeCode == 'hyperv') {
-			rtn = MANAGED_SERVER_TYPE_HYPERV
-		} else if(cloudTypeCode == 'vmware') {
-			rtn = MANAGED_SERVER_TYPE_VCENTER
-		} else if(cloudTypeCode == 'scvmm') {
-			rtn = MANAGED_SERVER_TYPE_SCVMM
-		} else if(cloudTypeCode == 'vcd') {
-			rtn = MANAGED_SERVER_TYPE_VCD
-		}
-
-		return rtn
+		return "urn:${cloudType}:${cloudType == CLOUD_TYPE_VCD ? "Vapp" : "Vm"}:${parentServerId}.${vmRefId}"
 	}
 
 }

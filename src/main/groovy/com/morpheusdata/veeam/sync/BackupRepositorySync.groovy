@@ -3,12 +3,9 @@ package com.morpheusdata.veeam.sync
 import com.morpheusdata.core.BulkCreateResult
 import com.morpheusdata.core.MorpheusContext
 import com.morpheusdata.core.util.SyncTask
-import com.morpheusdata.model.BackupJob
 import com.morpheusdata.model.BackupRepository
 import com.morpheusdata.model.BackupProvider
-import com.morpheusdata.model.projection.BackupJobIdentityProjection
 import com.morpheusdata.model.projection.BackupRepositoryIdentityProjection
-import com.morpheusdata.veeam.VeeamBackupProvider
 import com.morpheusdata.veeam.VeeamPlugin
 import com.morpheusdata.veeam.services.ApiService
 import com.morpheusdata.veeam.utils.VeeamUtils
