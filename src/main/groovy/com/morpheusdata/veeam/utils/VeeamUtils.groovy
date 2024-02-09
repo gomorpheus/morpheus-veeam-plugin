@@ -10,11 +10,6 @@ import groovy.util.logging.Slf4j
 @Slf4j
 class VeeamUtils {
 
-	static CLOUD_TYPE_VMWARE = "VMware"
-	static CLOUD_TYPE_HYPERV = "HyperV"
-	static CLOUD_TYPE_SCVMM = "Scvmm"
-	static CLOUD_TYPE_VCD = "vCloud"
-
 	static getBackupStatus(backupSessionState) {
 		log.debug("getBackupStatus: ${backupSessionState}")
 		def status = BackupResult.Status.IN_PROGRESS.toString()
@@ -47,10 +42,6 @@ class VeeamUtils {
 
 	static getBackupServerId(Backup backup) {
 		backup.getConfigProperty("veeamManagedServerId")?.split(':')?.getAt(1)
-	}
-
-	static getManagedServerId(Backup backup) {
-		backup.getConfigProperty("veeamManagedServerId")?.split(":").getAt(0)
 	}
 
 	static extractVeeamUuid(String url) {
@@ -90,33 +81,6 @@ class VeeamUtils {
 				rtn = href.substring(firstSlash + 1)
 		}
 		return rtn
-	}
-
-	static getVmHierarchyObjRef(Backup backup, ComputeServer server, String cloudType) {
-		def objRef = backup.getConfigProperty('hierarchyObjRef')
-		if(!objRef) {
-			def hierarchyRootUid = backup.getConfigProperty("veeamHierarchyRootUid")
-			def managedServerId = hierarchyRootUid ? hierarchyRootUid : backup.getConfigProperty("veeamManagedServerId")?.split(":")?.getAt(0)
-			log.debug("server: ${server}, cloud: ${server?.cloud}, cloudType: ${server?.cloud?.cloudType}, cloudId: ${server?.cloud?.id}}")
-			if(server) {
-				objRef = getVmHierarchyObjRef(server.externalId, managedServerId, cloudType)
-			}
-		}
-
-
-		return objRef
-	}
-	static getVmHierarchyObjRef(Backup backup, String vmRefId, String cloudType) {
-		String managedServerId = getHierarchyRoot(backup)
-		return getVmHierarchyObjRef(vmRefId, managedServerId, cloudType)
-	}
-
-	static getVmHierarchyObjRef(vmRefId, managedServerId, cloudType) {
-		def parentServerId = managedServerId
-		if(managedServerId.contains("urn:veeam")) {
-			parentServerId = extractVeeamUuid(managedServerId)
-		}
-		return "urn:${cloudType}:${cloudType == CLOUD_TYPE_VCD ? "Vapp" : "Vm"}:${parentServerId}.${vmRefId}"
 	}
 
 }
