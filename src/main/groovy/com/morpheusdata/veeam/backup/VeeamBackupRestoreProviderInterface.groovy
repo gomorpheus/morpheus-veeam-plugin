@@ -3,7 +3,6 @@ package com.morpheusdata.veeam.backup
 import com.morpheusdata.core.MorpheusContext
 import com.morpheusdata.core.Plugin
 import com.morpheusdata.core.backup.BackupRestoreProvider
-import com.morpheusdata.core.backup.BackupTypeProvider
 import com.morpheusdata.core.backup.response.BackupRestoreResponse
 import com.morpheusdata.core.data.DataFilter
 import com.morpheusdata.core.data.DataQuery
@@ -230,6 +229,16 @@ interface VeeamBackupRestoreProviderInterface extends BackupRestoreProvider {
 		return rtn
 	}
 
+	/**
+	 * Build the restore options for the restore operation. This is a convenient way to build the restore options for the
+	 * restore operation. The restore options are used to configure the restore operation.
+	 * @param authConfig the authentication configuration
+	 * @param backupResult the backup result
+	 * @param backup the backup
+	 * @param server the compute server
+	 * @param cloud the cloud
+	 * @return the restore options as a map
+	 */
 	default Map buildApiRestoreOpts(Map authConfig, BackupResult backupResult, Backup backup, ComputeServer server, Cloud cloud) {
 		def restoreOpts = [authConfig: authConfig, cloudTypeCode: cloud?.cloudType?.code, backupType: backupResult.backupType]
 		if(backupResult.getConfigProperty("restoreHref")) {
@@ -253,147 +262,198 @@ interface VeeamBackupRestoreProviderInterface extends BackupRestoreProvider {
 		return objectRef
 	}
 
+	/**
+	 * Get the restore path for the restore operation. There are several way the backup could store the restore link
+	 * based on the type of backup (job, quickbackup, veeamzip) and version of veeam (9.4u4a, 10, 11, 12). The restore
+	 * path is a URI that is used to execute the restore operation.
+	 * @param authConfig the authentication configuration
+	 * @param token the authentication token
+	 * @param backupResult the backup result
+	 * @param objectRef the object reference
+	 * @param backupSessionId the backup session id
+	 * @param opts optional parameters used for configuration.
+	 * @return the restore path as a string
+	 */
 	default String getRestorePath(Map authConfig, String token, BackupResult backupResult, String objectRef, String backupSessionId, Map opts) {
 		log.debug("getRestorePath: ${authConfig}, ${token}, ${backupResult}, ${objectRef}, ${backupSessionId}, ${opts}")
-		def rtn = [success:false]
-		def headers = apiService.buildHeaders([:], token)
-		def query = [format: "Entity"]
-		def restoreLink
-
+		String restoreLink = null
 		if(opts.restoreHref) {
-			def restoreType = opts.restoreType
-			def uri = new URI(opts.restoreHref)
-			HttpApiClient httpApiClient = new HttpApiClient()
-			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
-			def results = httpApiClient.callXmlApi(authConfig.apiUrl, uri.path, null, null, requestOpts, 'GET')
-			log.debug("got: ${results}")
-			rtn.success = results?.success
-			if(rtn.success == true) {
-				def response = new groovy.util.XmlSlurper().parseText(results.content)
-				response[restoreType].Links.Link.each { link ->
-					if(link['@Type'] == "Restore" || link['@Rel'] == "Restore") {
-						def restoreUrl = new URI(link['@Href']?.toString())
-						restoreLink = restoreUrl.path
-					}
-				}
-			}
+			restoreLink = getRestoreLinkFromRestoreHref(authConfig, opts.restoreHref, opts.restoreType)
 		}
-
-		// for everything not vcd
-		// the restore point is set in the backup result config
+		// for everything not vcd, the restore point is set in the backup result config
 		if(!restoreLink && (opts.restorePointId || opts.restoreRef)) {
-			def restorePointId = opts.restorePointId ?: opts.restoreRef
-			HttpApiClient httpApiClient = new HttpApiClient()
-			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
-			def results = httpApiClient.callXmlApi(authConfig.apiUrl, "/api/restorePoints/${restorePointId}/vmRestorePoints", null, null, requestOpts, 'GET')
-			log.debug("got: ${results}")
-			rtn.success = results?.success
-			if(rtn.success == true) {
-				def response = new groovy.util.XmlSlurper().parseText(results.content)
-				response.VmRestorePoint.Links.Link.each { link ->
-					if(link['@Type'] == "Restore" || link['@Rel'] == "Restore") {
-						def restoreUrl = new URI(link['@Href']?.toString())
-						restoreLink = restoreUrl.path
-					}
-				}
-			}
+			restoreLink = getRestoreLinkFromVmRestorePointId(authConfig, opts.restorePointId ?: opts.restoreRef)
 		}
-
 		if(opts.vmRestorePointId || (opts.restorePointId && !restoreLink)) {
-			HttpApiClient httpApiClient = new HttpApiClient()
-			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
-			def results = httpApiClient.callXmlApi(authConfig.apiUrl, "/api/vmRestorePoints/${opts.vmRestorePointId ?: opts.restorePointId}", null, null, requestOpts, 'GET')
-			log.debug("got: ${results}")
-			rtn.success = results?.success
-			if(rtn.success == true) {
-				def response = new groovy.util.XmlSlurper().parseText(results.content)
-				response.Links.Link.each { link ->
-					if(link['@Rel'] == "Restore") {
-						def restoreUrl = new URI(link['@Href']?.toString())
-						restoreLink = restoreUrl.path
-					}
-				}
-			}
+			restoreLink = getRestoreLinkFromRestorePointId(authConfig, opts.vmRestorePointId ?: opts.restorePointId)
 		}
-
-		// we only have the backup session, find the restore resources
 		if(!restoreLink) {
-			HttpApiClient httpApiClient = new HttpApiClient()
-			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
-			def backupSessionResponse = httpApiClient.callJsonApi(authConfig.apiUrl, "/api/backupSessions/${backupSessionId}", requestOpts, 'GET')
-
-			log.debug("backupSession results: ${backupSessionResponse}")
-			//find restore points
-			def restorePointsLink
-			rtn.success = backupSessionResponse?.success
-			if(rtn.success == true) {
-				def backupSessionData = backupSessionResponse.data
-				log.debug("backup results retore links: ${backupSessionData.Links.Link}")
-				backupSessionData.Links.Link.each { link ->
-					if(link['@Type'] == "RestorePointReference") {
-						def restorePointsUrl = new URI(link['@Href'].toString())
-						restorePointsLink = "${restorePointsUrl.path}/vmRestorePoints"
-					}
-					if(link['@Type'] == "VmRestorePoint") {
-						def restoreUrl = new URI(link['@Href']?.toString())
-						restorePointsLink = restoreUrl.path
-					}
-				}
-			}
-
-			// probably a veeamzip, need to go find the restore point for the backup session
+			// we only have the backup session, find the restore resources
+			def restorePointsLink = getRestorePointsLinkfromBackupSession(authConfig, backupSessionId)
+			// probably a veeamzip, need to go find the restore point for the backup
 			if(!restorePointsLink) {
-				def backupSessionData = backupSessionResponse.data
-				def backupName = backupSessionData.jobName // the backup session and the backup(result) should have the same name
-				def backupResults = fetchQuery(opts.authConfig, "Backup", [Name: backupName])
-				def restoreRefList = backupResults.data.refs?.ref?.links?.link?.find { it.type == "RestorePointReferenceList" }
-				if(restoreRefList) {
-					// get a list of restore points from the backup
-					def refListLink = new URI(restoreRefList.href)
-					requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
-					def refListResults = httpApiClient.callJsonApi(authConfig.apiUrl, refListLink.path, requestOpts, 'GET')
-					rtn.success = refListResults?.success
-					if(rtn.success == true) {
-						// we need the vm restore point to execute the restore
-						def refListResponse = XmlUtils.xmlToMap(refListResults.content)
-						refListResponse.RestorePoint.Links.Link.each { link ->
-							if(link['Type'] == "VmRestorePointReferenceList") {
-								def restoreUrl = new URI(link['Href']?.toString())
-								restorePointsLink = restoreUrl.path
-							}
-						}
-					}
-				}
+				restorePointsLink = getRestorePointsLinkFromBackup(authConfig, backupSessionId)
 			}
 
 			if(restorePointsLink) {
-				requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
-				def restoreLinkResults = httpApiClient.callXmlApi(authConfig.apiUrl, "${restorePointsLink}", requestOpts, 'GET')
-				log.debug("got: ${backupSessionResponse}")
-				rtn.success = backupSessionResponse?.success
-				if(rtn.success == true) {
-					def response = new groovy.util.XmlSlurper().parseText(restoreLinkResults.content)
-					def restorePoint
-					if(response.name() == "VmRestorePoints") {
-						restorePoint = response.VmRestorePoint.find { it.HierarchyObjRef.text().toString().toLowerCase() == objectRef?.toLowerCase() || it.VmName.text().toString() == opts.vmName }
-						if(!restorePoint && opts.vCenterVmId) {
-							restorePoint = response.VmRestorePoint.find { it.HierarchyObjRef.text().toString().endsWith(opts.vCenterVmId) }
-						}
-					} else {
-						restorePoint = response
-					}
+				restoreLink = getRestoreLinkFromRestorePoints(authConfig, restorePointsLink, objectRef, opts.vmName, opts.vCenterVmId)
+			}
+		}
 
-					if(restorePoint) {
-						restorePoint.Links.Link.each { link ->
-							if(link['@Rel']?.toString() == "Restore") {
-								def restoreUrl = new URI(link['@Href']?.toString())
-								restoreLink = restoreUrl.path
-							}
+		return restoreLink
+	}
+
+	/**
+	 * Get the restore link from the restore href. This is used to find the restore link from the restore href.
+	 * @param authConfig the authentication configuration
+	 * @param restoreHref the restore href
+	 * @param restoreType the restore type
+	 * @return the restore link as a string
+	 */
+	default String getRestoreLinkFromRestoreHref(Map authConfig, String restoreHref, String restoreType) {
+		String restoreLink = null
+		def response = apiService.callXmlApi(authConfig, restoreHref)
+		log.debug("getRestoreLinkFromRestoreHref response: ${response}")
+		if(response.success == true) {
+			response.data[restoreType].Links.Link.each { link ->
+				if(link['@Type'] == "Restore" || link['@Rel'] == "Restore") {
+					restoreLink = new URI(link['@Href']?.toString()).path
+				}
+			}
+		}
+
+		return restoreLink
+	}
+
+	/**
+	 * Get the restore link from the vm restore points. This is used to find the restore link from the vm restore points.
+	 * @param authConfig the authentication configuration
+	 * @param restorePointId the restore point id
+	 * @return the restore link as a string
+	 */
+	default String getRestoreLinkFromVmRestorePointId(Map authConfig, String restorePointId) {
+		String restoreLink = null
+		def response = apiService.getVmRestorePointsFromRestorePointId(authConfig, restorePointId)
+		log.debug("getVmRestorePointsFromRestorePointId response: ${response}")
+		if(response.success == true) {
+			response.data.VmRestorePoint.Links.Link.each { link ->
+				if(link['@Type'] == "Restore" || link['@Rel'] == "Restore") {
+					def restoreUrl = new URI(link['@Href']?.toString())
+					restoreLink = restoreUrl.path
+				}
+			}
+		}
+
+		return restoreLink
+	}
+
+	/**
+	 * Get the restore link from the vm restore points. This is used to find the restore link from the vm restore points.
+	 * @param authConfig the authentication configuration
+	 * @param restorePointId the restore point id
+	 * @return the restore link as a string
+	 */
+	default String getRestoreLinkFromRestorePointId(Map authConfig, String restorePointId) {
+		String restoreLink = null
+		def response = apiService.getRestorePointFromRestorePointId(authConfig, restorePointId)
+		log.debug("getRestoreLinkFromRestorePointId response: ${response}")
+		if(response.success == true) {
+			response.data.Links.Link.each { link ->
+				if(link['@Rel'] == "Restore") {
+					restoreLink = new URI(link['@Href']?.toString()).path
+				}
+			}
+		}
+
+		return restoreLink
+	}
+
+	/**
+	 * Get the restore points link from the backup session. This is used to find the restore points link from the backup session.
+	 * @param authConfig the authentication configuration
+	 * @param backupSessionId the backup session id
+	 * @return the restore points link as a string
+	 */
+	default String getRestorePointsLinkfromBackupSession(Map authConfig, String backupSessionId) {
+		def restorePointsLink = null
+		def backupSessionResponse = apiService.getBackupSession(authConfig, backupSessionId)
+		log.debug("backupSession results: ${backupSessionResponse}")
+		//find restore points
+		if(backupSessionResponse?.success) {
+			def backupSessionData = backupSessionResponse.data
+			log.debug("backup results retore links: ${backupSessionData.Links.Link}")
+			backupSessionData.Links.Link.each { link ->
+				if(link['@Type'] == "RestorePointReference") {
+					def restorePointsUrl = new URI(link['@Href'].toString())
+					restorePointsLink = "${restorePointsUrl.path}/vmRestorePoints"
+				}
+				if(link['@Type'] == "VmRestorePoint") {
+					restorePointsLink = new URI(link['@Href']?.toString()).path
+				}
+			}
+		}
+
+		return restorePointsLink
+	}
+
+	/**
+	 * Get the restore points link from the backup. This is used to find the restore points link from the backup.
+	 * @param authConfig the authentication configuration
+	 * @param backupSessionId the backup session id
+	 * @return the restore points link as a string
+	 */
+	default String getRestorePointsLinkFromBackup(Map authConfig, String backupSessionId) {
+		def restorePointsLink = null
+		def backupSessionResponse = apiService.getBackupSession(authConfig, backupSessionId)
+		if(backupSessionResponse.success) {
+			def backupName =  backupSessionResponse.data.jobName // the backup session and the backup(result) should have the same name
+			def backupResults = apiService.fetchQuery(authConfig, "Backup", [Name: backupName])
+			def restoreRefList = backupResults.data.refs?.ref?.links?.link?.find { it.type == "RestorePointReferenceList" }
+			if(restoreRefList) {
+				// get a list of restore points from the backup
+				def refListResponse = apiService.callJsonApi(authConfig, restoreRefList.href)
+				if(refListResponse?.success) {
+					// we need the vm restore point to execute the restore
+					refListResponse.data.RestorePoint.Links.Link.each { link ->
+						if(link['Type'] == "VmRestorePointReferenceList") {
+							restorePointsLink = new URI(link['Href']?.toString()).path
 						}
-					} else {
-						rtn.msg = "Veeam restore point not found for VM"
-						rtn.success = false
-						log.error(rtn.msg)
+					}
+				}
+			}
+		}
+
+		return restorePointsLink
+	}
+
+	/**
+	 * Get the restore link from the restore points. This is used to find the restore link from the restore points.
+	 * @param authConfig the authentication configuration
+	 * @param restorePointsLink the restore points link
+	 * @param objectRef the object reference
+	 * @param vmName the vm name
+	 * @param vCenterVmId the vCenter vm id
+	 * @return the restore link as a string
+	 */
+	default String getRestoreLinkFromRestorePoints(Map authConfig, String restorePointsLink, String objectRef, String vmName, String vCenterVmId) {
+		String restoreLink = null
+		def restoreLinkResponse = apiService.callXmlApi(authConfig, restorePointsLink.toString())
+		log.debug("got: ${restoreLinkResponse}")
+		if(restoreLinkResponse?.success) {
+			def restorePoint
+			if(restoreLinkResponse.data.name() == "VmRestorePoints") {
+				restorePoint = restoreLinkResponse.data.VmRestorePoint.find { it.HierarchyObjRef.text().toString().toLowerCase() == objectRef?.toLowerCase() || it.VmName.text().toString() == vmName }
+				if(!restorePoint && opts.vCenterVmId) {
+					restorePoint = restoreLinkResponse.data.VmRestorePoint.find { it.HierarchyObjRef.text().toString().endsWith(vCenterVmId) }
+				}
+			} else {
+				restorePoint = restoreLinkResponse
+			}
+
+			if(restorePoint) {
+				restorePoint.Links.Link.each { link ->
+					if(link['@Rel']?.toString() == "Restore") {
+						restoreLink = new URI(link['@Href']?.toString()).path
 					}
 				}
 			}
@@ -402,6 +462,15 @@ interface VeeamBackupRestoreProviderInterface extends BackupRestoreProvider {
 		return restoreLink
 	}
 
+	/**
+	 * Build the restore spec for the restore operation. This is a convenient way to build the restore spec for the
+	 * restore operation. The restore spec is an XML document that is used to configure the restore operation.
+	 * @param restorePath the restore path
+	 * @param hierarchyRoot the hierarchy root
+	 * @param backupType the backup type
+	 * @param opts optional parameters used for configuration.
+	 * @return the restore spec as a string
+	 */
 	default String buildRestoreSpec(String restorePath, String hierarchyRoot, String backupType, Map opts) {
 		def xml = new StreamingMarkupBuilder().bind() {
 			RestoreSpec("xmlns": "http://www.veeam.com/ent/v1.0", "xmlns:xsd": "http://www.w3.org/2001/XMLSchema", "xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance") {
@@ -486,6 +555,14 @@ interface VeeamBackupRestoreProviderInterface extends BackupRestoreProvider {
 		return rtn
 	}
 
+	/**
+	 * Finalize the restore operation. This method is called after the restore has completed. This is a convenient way
+	 * to perform any finalization steps after the restore has completed. This could include operations like updating
+	 * the instance status, renewing the IP address, or any other post-restore operations.
+	 * @param restore the restore to be finalized
+	 * @return a {@link ServiceResponse} object. A ServiceResponse with a false success will indicate a failed
+	 * configuration and will halt the backup restore process.
+	 */
 	default ServiceResponse finalizeRestore(BackupRestore restore) {
 		log.info("finalizeRestore: {}", restore)
 		def instance

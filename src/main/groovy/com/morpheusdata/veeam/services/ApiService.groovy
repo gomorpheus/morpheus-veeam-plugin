@@ -1065,6 +1065,19 @@ class ApiService {
 		return rtn
 	}
 
+	static getBackupSession(Map authConfig, String backupSessionId) {
+		def rtn = [success:false]
+		def tokenResults = getToken(authConfig)
+		if(tokenResults.success == true) {
+			def headers = buildHeaders([:], tokenResults.token)
+			def query = [format: "Entity"]
+			HttpApiClient httpApiClient = new HttpApiClient()
+			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
+			rtn = httpApiClient.callXmlApi(authConfig.apiUrl, "/api/backupSessions/${backupSessionId}", requestOpts, 'GET')
+		}
+		return rtn
+	}
+
 	static getRestorePoint(Map authConfig, String objectRef, Map opts=[:]) {
 		log.debug "getLatestRestorePoint: ${objectRef}"
 		def rtn = [success:false, data: [:]]
@@ -1102,6 +1115,34 @@ class ApiService {
 			}
 		}
 
+		return rtn
+	}
+
+	static getVmRestorePointsFromRestorePointId(Map authConfig, String restorePointId, Map opts=[:]) {
+		log.debug "getVmRestorePointsFromRestorePointId: ${restorePointId}"
+		def rtn = [success:false, data: [:]]
+		def tokenResults = getToken(authConfig)
+		if(tokenResults.success == true) {
+			def headers = buildHeaders([:], tokenResults.token)
+			def query = [format: "Entity"]
+			HttpApiClient httpApiClient = new HttpApiClient()
+			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
+			rtn = httpApiClient.callXmlApi(authConfig.apiUrl, "/api/restorePoints/${restorePointId}/vmRestorePoints", requestOpts, 'GET')
+		}
+		return rtn
+	}
+
+	static getRestorePointFromRestorePointId(Map authConfig, String restorePointId) {
+		log.debug "getRestorePointFromRestorePointId: ${restorePointId}"
+		def rtn = [success:false, data: [:]]
+		def tokenResults = getToken(authConfig)
+		if(tokenResults.success == true) {
+			def headers = buildHeaders([:], tokenResults.token)
+			def query = [format: "Entity"]
+			HttpApiClient httpApiClient = new HttpApiClient()
+			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
+			rtn = httpApiClient.callXmlApi(authConfig.apiUrl, "/api/vmRestorePoints/${restorePointId}", requestOpts, 'GET')
+		}
 		return rtn
 	}
 
@@ -1365,6 +1406,36 @@ class ApiService {
 				sleep(taskSleepInterval)
 			}
 			attempt++
+		}
+		return rtn
+	}
+	
+	static callXmlApi(Map authConfig, String apiUri, String method='GET', Map opts=[:]) {
+		log.debug "callXmlApi: ${apiUri}"
+		def rtn = [success:false, data: [:]]
+		def tokenResults = getToken(authConfig)
+		if(tokenResults.success == true) {
+			def uri = new URI(apiUri)
+			def headers = buildHeaders([:], tokenResults.token)
+			def query = [format: "Entity"]
+			HttpApiClient httpApiClient = new HttpApiClient()
+			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
+			rtn = httpApiClient.callXmlApi(authConfig.apiUrl, uri.path, requestOpts, method)
+		}
+		return rtn
+	}
+
+	static callJsonApi(Map authConfig, String apiUri, String method='GET', Map opts=[:]) {
+		log.debug "callJsonApi: ${apiUri}"
+		def rtn = [success:false, data: [:]]
+		def tokenResults = getToken(authConfig)
+		if(tokenResults.success == true) {
+			def uri = new URI(apiUri)
+			def headers = buildHeaders([:], tokenResults.token)
+			def query = [format: "Entity"]
+			HttpApiClient httpApiClient = new HttpApiClient()
+			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
+			rtn = httpApiClient.callJsonApi(authConfig.apiUrl, uri.path, requestOpts, method)
 		}
 		return rtn
 	}
