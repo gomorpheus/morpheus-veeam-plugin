@@ -7,7 +7,6 @@ import com.morpheusdata.core.backup.response.BackupRestoreResponse
 import com.morpheusdata.core.data.DataFilter
 import com.morpheusdata.core.data.DataQuery
 import com.morpheusdata.core.util.DateUtility
-import com.morpheusdata.core.util.HttpApiClient
 import com.morpheusdata.model.BackupProvider
 import com.morpheusdata.model.Cloud
 import com.morpheusdata.model.ComputeServer
@@ -19,7 +18,6 @@ import com.morpheusdata.model.Backup;
 import com.morpheusdata.model.Instance
 import com.morpheusdata.veeam.services.ApiService
 import com.morpheusdata.veeam.utils.VeeamUtils
-import com.morpheusdata.veeam.utils.XmlUtils
 import groovy.util.logging.Slf4j
 import groovy.xml.StreamingMarkupBuilder
 
