@@ -177,6 +177,9 @@ class VeeamVcdBackupTypeProvider extends VeeamBackupTypeProvider {
 	}
 
 	String getVmHierarchyObjRef(vmRefId, managedServerId) {
+		if(!vmRefId || !managedServerId) {
+			return null
+		}
 		def parentServerId = managedServerId
 		if(managedServerId.contains("urn:veeam")) {
 			parentServerId = VeeamUtils.extractVeeamUuid(managedServerId)

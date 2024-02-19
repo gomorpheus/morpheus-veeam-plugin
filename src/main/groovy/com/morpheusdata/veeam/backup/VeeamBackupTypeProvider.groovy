@@ -67,6 +67,9 @@ abstract class VeeamBackupTypeProvider extends AbstractBackupTypeProvider {
 	}
 
 	String getVmHierarchyObjRef(vmRefId, managedServerId) {
+		if(!vmRefId || !managedServerId) {
+			return null
+		}
 		def parentServerId = managedServerId
 		if(managedServerId.contains("urn:veeam")) {
 			parentServerId = VeeamUtils.extractVeeamUuid(managedServerId)
