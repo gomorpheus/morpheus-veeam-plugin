@@ -50,7 +50,7 @@ class VeeamScvmmBackupTypeProvider extends VeeamBackupTypeProvider {
 	 */
 	@Override
 	String getName() {
-		return "veeam-scvmm-backupTypeProvider"
+		return "Veeam SCVMM VM Backup"
 	}
 	
 	/**
@@ -152,7 +152,7 @@ class VeeamScvmmBackupTypeProvider extends VeeamBackupTypeProvider {
 	}
 
 	String getCloudType() {
-		return "Scvmm"
+		return "HyperV"
 	}
 
 	String getManagedServerType() {
@@ -176,6 +176,17 @@ class VeeamScvmmBackupTypeProvider extends VeeamBackupTypeProvider {
 		}
 
 		return objRef
+	}
+
+	String getVmHierarchyObjRef(vmRefId, managedServerId) {
+		if(!vmRefId || !managedServerId) {
+			return null
+		}
+		def parentServerId = managedServerId
+		if(managedServerId.contains("urn:veeam")) {
+			parentServerId = VeeamUtils.extractVeeamUuid(managedServerId)
+		}
+		return "urn:${cloudType}:Vm:${parentServerId}.${vmRefId}"
 	}
 	
 	/**

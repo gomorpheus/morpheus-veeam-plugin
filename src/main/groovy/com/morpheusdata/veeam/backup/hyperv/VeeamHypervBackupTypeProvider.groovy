@@ -50,7 +50,7 @@ class VeeamHypervBackupTypeProvider extends VeeamBackupTypeProvider {
 	 */
 	@Override
 	String getName() {
-		return "veeam-hyperv-backupTypeProvider"
+		return "Veeam Hyper-V VM Backup"
 	}
 	
 	/**

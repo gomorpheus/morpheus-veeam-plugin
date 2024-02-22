@@ -373,7 +373,9 @@ interface VeeamBackupExecutionProviderInterface extends BackupExecutionProvider 
 							updateBackupExecutionResponse((BackupExecutionResponse) rtn.data, startResponse, 'quickbackup')
 							rtn.success = startResponse.success
 							if(startResponse.success == false) {
-								rtn.msg = startResponse.errorMessage ?: startResponse.msg
+								rtn.data.backupResult.status = BackupResult.Status.FAILED.toString()
+								rtn.data.backupResult.statusMessage = startResponse.msg
+								rtn.msg = startResponse.msg
 								rtn.success = false
 							}
 						} else if(veeamHierarchyRef) {
@@ -381,7 +383,9 @@ interface VeeamBackupExecutionProviderInterface extends BackupExecutionProvider 
 							updateBackupExecutionResponse((BackupExecutionResponse)rtn.data, startResponse, 'veeamzip')
 							rtn.success = startResponse.success
 							if(startResponse.success == false) {
-								rtn.msg = startResponse.errorMessage ?: startResponse.msg
+								rtn.data.backupResult.status = BackupResult.Status.FAILED.toString()
+								rtn.data.backupResult.statusMessage = startResponse.msg
+								rtn.msg = startResponse.msg
 								rtn.success = false
 							}
 						} else {
@@ -460,7 +464,7 @@ interface VeeamBackupExecutionProviderInterface extends BackupExecutionProvider 
 			executionResponse.backupResult.backupType = backupType
 		} else {
 			executionResponse.backupResult.status = BackupResult.Status.FAILED.toString()
-			executionResponse.backupResult.statusMessage = backupStartResponse.errorMessage ?: backupStartResponse.msg
+			executionResponse.backupResult.statusMessage = backupStartResponse.msg
 		}
 		executionResponse.updates = true
 	}

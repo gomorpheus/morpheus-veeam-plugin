@@ -50,7 +50,7 @@ class VeeamVcdBackupTypeProvider extends VeeamBackupTypeProvider {
 	 */
 	@Override
 	String getName() {
-		return "veeam-vcd-backupTypeProvider"
+		return "Veeam VCD VM Backup"
 	}
 	
 	/**
