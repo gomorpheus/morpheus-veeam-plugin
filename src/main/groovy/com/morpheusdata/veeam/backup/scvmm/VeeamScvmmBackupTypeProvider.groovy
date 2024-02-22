@@ -159,7 +159,7 @@ class VeeamScvmmBackupTypeProvider extends VeeamBackupTypeProvider {
 		return "Scvmm"
 	}
 
-	String getVmRefId(ComputeServer computeServerl) {
+	String getVmRefId(ComputeServer computeServer) {
 		return computeServer.externalId
 	}
 
