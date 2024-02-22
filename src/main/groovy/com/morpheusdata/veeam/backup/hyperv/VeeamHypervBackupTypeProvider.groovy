@@ -5,6 +5,7 @@ import com.morpheusdata.core.Plugin
 import com.morpheusdata.core.backup.BackupExecutionProvider
 import com.morpheusdata.core.backup.BackupRestoreProvider
 import com.morpheusdata.core.backup.BackupTypeProvider
+import com.morpheusdata.model.Backup
 import com.morpheusdata.model.BackupProvider as BackupProviderModel
 import com.morpheusdata.model.ComputeServer
 import com.morpheusdata.model.OptionType
@@ -13,6 +14,7 @@ import com.morpheusdata.veeam.backup.VeeamBackupExecutionProviderInterface
 import com.morpheusdata.veeam.backup.VeeamBackupRestoreProviderInterface
 import com.morpheusdata.veeam.backup.VeeamBackupTypeProvider
 import com.morpheusdata.veeam.services.ApiService
+import com.morpheusdata.veeam.utils.VeeamUtils
 import groovy.util.logging.Slf4j
 
 /**
@@ -159,6 +161,20 @@ class VeeamHypervBackupTypeProvider extends VeeamBackupTypeProvider {
 
 	String getVmRefId(ComputeServer computeServer) {
 		return null
+	}
+
+	@Override
+	String getVmHierarchyObjRef(Backup backup, ComputeServer server, String veeamObjectRef=null) {
+		String objRef = super.getVmHierarchyObjRef(backup, server, veeamObjectRef)
+		if(!objRef) {
+			String vmRefId = VeeamUtils.extractVmIdFromObjectRef(veeamObjectRef)
+			if(vmRefId) {
+				def managedServerId =  VeeamUtils.getHierarchyRoot(backup)
+				objRef = getVmHierarchyObjRef(vmRefId, managedServerId)
+			}
+		}
+
+		return objRef
 	}
 	
 	/**

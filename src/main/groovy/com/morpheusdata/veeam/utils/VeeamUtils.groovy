@@ -58,8 +58,8 @@ class VeeamUtils {
 		return rtn
 	}
 
-	static extractMOR(String uuid) {
-		def rtn = uuid
+	static extractVmIdFromObjectRef(String objectRef) {
+		def rtn = objectRef
 		def lastPeriod = rtn?.lastIndexOf('.')
 		if(lastPeriod > -1)
 			rtn = rtn.substring(lastPeriod + 1)

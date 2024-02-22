@@ -29,41 +29,38 @@ abstract class VeeamBackupTypeProvider extends AbstractBackupTypeProvider {
 	 * @param computeServer
 	 * @return the VM reference ID for the given compute server in the backup provider. This should be the ID of the VM in the virtualization provider of the VM.
 	 */
-	abstract String getVmRefId(ComputeServer computeServer)
+	abstract String getVmRefId(ComputeServer computeServer);
 
 	String getVeeamObjectRef(Map authConfig, String token, Backup backup, BackupProvider backupProvider, ComputeServer computeServer) {
-		def objRef = null
-		String hierarchyRoot = VeeamUtils.getHierarchyRoot(backup)
-		def vmRefId = getVmRefId(computeServer)
-		if(vmRefId) {
-			def vmIdResults = apiService.lookupVm(authConfig.apiUrl, token, getVmHierarchyObjRef(vmRefId, hierarchyRoot))
-			objRef = vmIdResults.vmId
-		} else {
-			//no vmRef, lookup by name
-			def vmIdResults = apiService.lookupVmByName(authConfig.apiUrl, token, hierarchyRoot, computeServer.name)
-			objRef = vmIdResults.vmId
-		}
-
-		return objRef
-	}
-
-	String getVmHierarchyObjRef(Backup backup, ComputeServer server) {
-		def objRef = backup.getConfigProperty('hierarchyObjRef')
+		def objRef = backup.getConfigProperty("veeamObjectRef")
 		if(!objRef) {
-			def hierarchyRootUid = backup.getConfigProperty("veeamHierarchyRootUid")
-			def managedServerId = hierarchyRootUid ? hierarchyRootUid : backup.getConfigProperty("veeamManagedServerId")?.split(":")?.getAt(0)
-			log.debug("server: ${server}, cloud: ${server?.cloud}, cloudType: ${server?.cloud?.cloudType}, cloudId: ${server?.cloud?.id}}")
-			if(server) {
-				objRef = getVmHierarchyObjRef(server.externalId, managedServerId)
+			String hierarchyRoot = VeeamUtils.getHierarchyRoot(backup)
+			def vmRefId = getVmRefId(computeServer)
+			if(vmRefId) {
+				def vmIdResults = apiService.lookupVm(authConfig.apiUrl, token, getVmHierarchyObjRef(vmRefId, hierarchyRoot))
+				objRef = vmIdResults.vmId
+			} else {
+				//no vmRef, lookup by name
+				def vmIdResults = apiService.lookupVmByName(authConfig.apiUrl, token, hierarchyRoot, computeServer.name)
+				objRef = vmIdResults.vmId
 			}
 		}
 
 		return objRef
 	}
 
-	String getVmHierarchyObjRef(Backup backup, String vmRefId) {
-		String managedServerId = VeeamUtils.getHierarchyRoot(backup)
-		return getVmHierarchyObjRef(vmRefId, managedServerId)
+	String getVmHierarchyObjRef(Backup backup, ComputeServer server, String veeamObjectRef=null) {
+		String objRef = backup.getConfigProperty("veeamHierarchyRef") ?: backup.getConfigProperty('hierarchyObjRef')
+		if(!objRef) {
+			def managedServerId =  VeeamUtils.getHierarchyRoot(backup)
+			def vmRefId = getVmRefId(server)
+			log.debug("server: ${server}, cloud: ${server?.cloud}, cloudType: ${server?.cloud?.cloudType}, cloudId: ${server?.cloud?.id}}")
+			if(server) {
+				objRef = getVmHierarchyObjRef(vmRefId, managedServerId)
+			}
+		}
+
+		return objRef
 	}
 
 	String getVmHierarchyObjRef(vmRefId, managedServerId) {

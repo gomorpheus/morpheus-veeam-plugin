@@ -10,9 +10,6 @@ import com.morpheusdata.veeam.utils.XmlUtils
 import groovy.util.logging.Slf4j
 import groovy.xml.StreamingMarkupBuilder
 
-import java.util.regex.Matcher
-import java.util.regex.Pattern
-
 @Slf4j
 class ApiService {
 
@@ -628,7 +625,7 @@ class ApiService {
 										log.debug("ONLY FOUND ONE OBJECT IN JOB")
 										def tmpJobObj = jobResults.job.jobInfo?.backupJobInfo?.includes?.objectInJob
 										if(opts.externalId) {
-											def jobObjMor = VeeamUtils.extractMOR(tmpJobObj.hierarchyObjRef)
+											def jobObjMor = VeeamUtils.extractVmIdFromObjectRef(tmpJobObj.hierarchyObjRef)
 											def jobObjUid = VeeamUtils.extractVeeamUuid(tmpJobObj.hierarchyObjRef)
 											if(opts.externalId == jobObjMor || opts.externalId.contains(jobObjUid)) {
 												jobObject = tmpJobObj
@@ -638,7 +635,7 @@ class ApiService {
 										log.debug("FOUND MULTIPLE JOB OBJECTS, FIND THE RIGHT ONE")
 										jobObject = jobResults.job.jobInfo?.backupJobInfo?.includes?.objectInJob?.find {
 											if(opts.externalId) {
-												def itMor = VeeamUtils.extractMOR(it.hierarchyObjRef)
+												def itMor = VeeamUtils.extractVmIdFromObjectRef(it.hierarchyObjRef)
 												return opts.externalId == itMor
 											} else {
 												return vmName == it.name
@@ -781,8 +778,10 @@ class ApiService {
 					log.debug("quick backup task results: ${taskResults}")
 					def jobSessionLink = taskResults.links.find { it.type == "BackupJobSession"}?.href
 					if(jobSessionLink) {
-						rtn.backupSessionId = VeeamUtils.extractVeeamUuid(jobSessionLink)
-						rtn.startDate = backupStartDate
+						rtn.data = [
+							backupSessionId: VeeamUtils.extractVeeamUuid(jobSessionLink),
+							startDate: backupStartDate
+						]
 					} else {
 						rtn.success = false
 						rtn.errorMsg = "Job session ID not found in Veeam task results."
@@ -825,20 +824,24 @@ class ApiService {
 			def results = httpApiClient.callXmlApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'POST')
 			log.debug("veeamzip backup start request got: ${results}")
 			def backupStartDate = results.headers?.Date
+			log.debug("backupStartDate: ${backupStartDate}")
 			rtn.success = results?.success
 			if (results?.success == true) {
-				def response = XmlUtils.xmlToMap(results.data, true)
-				taskId = response.taskId
+				taskId = results.data.TaskId.toString()
 			}
+			log.debug("taskId: $taskId")
 			if (taskId) {
 				def taskResults = waitForTask(authConfig, taskId, ['Finished'])
 				rtn.success = taskResults?.success
 				if(taskResults.success && !taskResults.error) {
 					log.debug("veeamzip task results: ${taskResults}")
 					def jobSessionLink = taskResults.links.find { it.type == "BackupJobSession"}?.href
+					log.debug("jobSessionLink: ${jobSessionLink}")
 					if(jobSessionLink) {
-						rtn.backupSessionId = VeeamUtils.extractVeeamUuid(jobSessionLink)
-						rtn.startDate = backupStartDate
+						rtn.data = [
+							backupSessionId: VeeamUtils.extractVeeamUuid(jobSessionLink),
+							startDate: backupStartDate
+						]
 					} else {
 						rtn.success = false
 						rtn.errorMsg = "Job session ID not found in Veeam task results."

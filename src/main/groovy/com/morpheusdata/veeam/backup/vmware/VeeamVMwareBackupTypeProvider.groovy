@@ -48,7 +48,7 @@ class VeeamVMwareBackupTypeProvider extends VeeamBackupTypeProvider {
 	 */
 	@Override
 	String getName() {
-		return "veeam-vmware-backupTypeProvider"
+		return "Veeam VMware VM Backup"
 	}
 	
 	/**

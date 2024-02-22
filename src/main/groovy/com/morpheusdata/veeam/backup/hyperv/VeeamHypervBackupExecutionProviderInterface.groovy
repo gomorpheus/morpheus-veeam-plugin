@@ -2,6 +2,11 @@ package com.morpheusdata.veeam.backup.hyperv
 
 import com.morpheusdata.core.MorpheusContext
 import com.morpheusdata.core.Plugin
+import com.morpheusdata.model.Backup
+import com.morpheusdata.model.BackupProvider
+import com.morpheusdata.model.BackupResult
+import com.morpheusdata.model.ComputeServer
+import com.morpheusdata.response.ServiceResponse
 import com.morpheusdata.veeam.backup.VeeamBackupExecutionProviderInterface
 import com.morpheusdata.veeam.backup.VeeamBackupTypeProvider
 import com.morpheusdata.veeam.services.ApiService
@@ -23,4 +28,10 @@ class VeeamHypervBackupExecutionProviderInterface implements VeeamBackupExecutio
 	}
 
 
+	@Override
+	ServiceResponse startVeeamZip(Backup backup, BackupProvider backupProvider, LinkedHashMap<String, Object> authConfig, backupServerId, String veeamHierarchyRef, BackupResult lastResult, ComputeServer computeServer) {
+		Locale locale = morpheus.services.webRequest.getLocale()
+		def error = morpheus.services.webRequest.getMessage("gomorpheus.error.veeam.hypervOndemandFullBackupNotSupported", null, locale)
+		return ServiceResponse.error(error)
+	}
 }
