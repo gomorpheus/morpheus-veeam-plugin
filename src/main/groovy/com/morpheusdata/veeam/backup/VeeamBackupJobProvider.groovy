@@ -12,6 +12,7 @@ import com.morpheusdata.model.Backup
 import com.morpheusdata.model.BackupJob
 import com.morpheusdata.model.BackupProvider
 import com.morpheusdata.model.BackupResult
+import com.morpheusdata.model.ExecuteScheduleType
 import com.morpheusdata.response.ServiceResponse
 import com.morpheusdata.veeam.services.ApiService
 import com.morpheusdata.veeam.utils.VeeamUtils
@@ -68,6 +69,24 @@ class VeeamBackupJobProvider implements BackupJobProvider {
 			def authConfig = apiService.getAuthConfig(backupProvider)
 			def cloneId = VeeamUtils.extractVeeamUuid(sourceBackupJobModel.externalId)
 			def jobName = "${backupJobModel.name}-${backupJobModel.account.id}"
+
+			// in 6.3.5/7.0 the plugin service will handle the schedule. If schedule is blank then
+			// we're on version 6.3.4 or older and we'll need to set the schedule here
+			if(backupJobModel.scheduleType == null) {
+				Long jobScheduleId = opts.jobSchedule ? opts.jobSchedule.toLong() : null
+				if(jobScheduleId) {
+					ExecuteScheduleType jobSchedule = morpheus.services.executeScheduleType.get(jobScheduleId)
+					backupJobModel.scheduleType = jobSchedule
+					try {
+						backupJobModel.nextFire = morpheus.services.executeScheduleType.calculateNextFire(jobSchedule)
+					} catch(Exception e) {
+						// ignore if next fire calculation fails
+					}
+				}
+			}
+			// clear retention count, we're not using it for veeam
+			backupJobModel.retentionCount = null
+
 			//make api call
 			def apiOpts = [jobName:jobName, repositoryId:backupJobModel.backupRepository?.internalId]
 			def cloneResults = apiService.cloneBackupJob(authConfig, cloneId, apiOpts)
@@ -79,7 +98,7 @@ class VeeamBackupJobProvider implements BackupJobProvider {
 				backupJobModel.category = 'veeam.job.' + backupProvider.id
 				backupJobModel.code = backupJobModel.category + '.' + backupJobModel.externalId
 				backupJobModel.cronExpression = cloneResults.scheduleCron
-				// morpheus.services.backup.backupJob.save(backupJobModel)
+
 				rtn.data = backupJobModel
 				rtn.success = true
 			} else {
