@@ -72,6 +72,15 @@ sourceSets {
 	main {
 		compileClasspath += configurations.provided
 	}
+	test {
+		compileClasspath += configurations.provided
+	}
+	integrationTest {
+		groovy.srcDirs = ["$projectDir/src/integrationTest/groovy"]
+		resources.srcDirs = ["$projectDir/src/integrationTest/resources"]
+		compileClasspath += main.output + test.output
+		runtimeClasspath += main.output + test.output
+	}
 }
 
 //Set plugin metadata information here that gets written into the jar
@@ -104,11 +113,14 @@ task(console, dependsOn: 'classes', type: JavaExec) {
 }
 
 test {
+	useJUnitPlatform()
 	testLogging {
 		exceptionFormat = 'full'
 		showStandardStreams = true
+		events "passed", "skipped", "failed"
 	}
 }
+
 tasks.assemble.dependsOn tasks.shadowJar
 
 tasks.register('moveToPlugin') {
