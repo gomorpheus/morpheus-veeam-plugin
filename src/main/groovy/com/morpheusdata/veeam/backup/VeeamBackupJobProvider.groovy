@@ -70,6 +70,17 @@ class VeeamBackupJobProvider implements BackupJobProvider {
 			def cloneId = VeeamUtils.extractVeeamUuid(sourceBackupJobModel.externalId)
 			def jobName = "${backupJobModel.name}-${backupJobModel.account.id}"
 
+			//make sure we have a repository
+			Long repositoryId = null
+			if(opts.target) {
+				repositoryId = opts.target.toLong()
+			} else if(opts.backupRepository) {
+				repositoryId = opts.backupRepository.toLong()
+			}
+			if(repositoryId) {
+				backupJobModel.backupRepository = morpheus.services.backupRepository.get(repositoryId)
+			}
+
 			// in 6.3.5/7.0 the plugin service will handle the schedule. If schedule is blank then
 			// we're on version 6.3.4 or older and we'll need to set the schedule here
 			if(backupJobModel.scheduleType == null) {
@@ -86,9 +97,10 @@ class VeeamBackupJobProvider implements BackupJobProvider {
 			}
 			// clear retention count, we're not using it for veeam
 			backupJobModel.retentionCount = null
-
+			log.debug("cloneBackupJob, backupJobModel: {}, repository: {}", backupJobModel.id, backupJobModel.backupRepository?.internalId)
 			//make api call
 			def apiOpts = [jobName:jobName, repositoryId:backupJobModel.backupRepository?.internalId]
+			log.debug("cloneBackupJob, apiOpts: {}", apiOpts)
 			def cloneResults = apiService.cloneBackupJob(authConfig, cloneId, apiOpts)
 			log.info("cloneResults: {}", cloneResults)
 			//check results

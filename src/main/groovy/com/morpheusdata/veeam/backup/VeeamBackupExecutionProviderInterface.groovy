@@ -208,7 +208,7 @@ interface VeeamBackupExecutionProviderInterface extends BackupExecutionProvider 
 					def backupJobBackups = apiService.getBackupJobBackups(authConfig.apiUrl, session.token, backupJobId)
 					// find by MOR first
 					Workload workload = morpheus.services.workload.get(backup.containerId)
-					if(workload.server?.id) {
+					if(workload?.server?.id) {
 						ComputeServer server = morpheus.services.computeServer.get(workload.server.id)
 						backupId = backupJobBackups.data?.find { VeeamUtils.extractVmIdFromObjectRef(it.objectRef.toString()) == server.externalId }?.objectId
 						log.info("deleteBackup, found backup by objectRef: ${backupId}")
@@ -226,9 +226,12 @@ interface VeeamBackupExecutionProviderInterface extends BackupExecutionProvider 
 						def removeTaskResults = apiService.waitForTask(authConfig + [token: session.token], removeTask.taskId.toString())
 						if(removeTaskResults.success || removeTaskResults.msg?.toLowerCase()?.contains("only one object")) {
 							def backupJobBackups = apiService.getBackupJobBackups(authConfig.apiUrl, session.token, backupJobId)
+							log.debug("backupJobBackups results: ${backupJobBackups}")
+							log.debug("backupJobBackups size: ${backupJobBackups.data.size()}")
 							if(backupJobBackups.success && backupJobBackups.data.size() <= 1 && backupJobBackups.data?.getAt(0)?.objectId?.toString() == backupId) {
 								// veeam backup jobs must contain at least one vm, so its safe to disable (9.5u4-) or delete (v10+ only)
 								// when the only vm remaining is the one we're removing
+								log.debug("The current backup is the last object in the job, removing the backup job")
 								ServiceResponse deleteResults = ((VeeamBackupProvider)this.plugin.getProviderByCode('veeam')).backupJobProvider.deleteBackupJob(backupJob)
 								if(deleteResults.success && deleteResults.data?.taskId) {
 									def taskResults = apiService.waitForTask(authConfig + [token: session.token], deleteResults.data.taskId.toString())
@@ -241,7 +244,7 @@ interface VeeamBackupExecutionProviderInterface extends BackupExecutionProvider 
 									log.debug(rtn.msg)
 								}
 							} else {
-								log.debug("Job contains only one object and can't be deleted.")
+								log.debug("Backup Job ${backupId} contains one or more objects and can't be deleted.")
 								rtn.success = true
 							}
 						} else {
@@ -249,6 +252,8 @@ interface VeeamBackupExecutionProviderInterface extends BackupExecutionProvider 
 							rtn.msg = removeTaskResults.msg
 						}
 					} else {
+						// older veeam didn't allow backup removal, so we just disable the job. Remove this when the minimum version
+						// of veeam support job delete via the API
 						def backupJobBackups = apiService.getBackupJobBackups(authConfig.apiUrl, session.token, backupJobId)
 						if(backupJobBackups.success && !backupJobBackups.data?.find { it.objectId?.toString() == backupId}) {
 							// the vm wasn't in the job so consider the delete a success
