@@ -189,9 +189,12 @@ interface VeeamBackupExecutionProviderInterface extends BackupExecutionProvider 
 		log.debug("deleteBackup: {}", backup)
 
 		ServiceResponse rtn = ServiceResponse.prepare()
-		//Note: Veeam API does not allow delete backup job, best we can do is turn off schedule
 		try {
 			def backupJob = backup.backupJob
+			if(!backupJob.backupProvider) {
+				// the backup provider was not included in the backup job object, so we need to fetch the job to include the job provider
+				backupJob = morpheus.services.backupJob.get(backup.backupJob.id)
+			}
 			if(!backupJob) {
 				rtn.success = true
 				return rtn
@@ -203,7 +206,7 @@ interface VeeamBackupExecutionProviderInterface extends BackupExecutionProvider 
 				def session = apiService.loginSession(backupProvider)
 				def token = session.token
 				def sessionId = session.sessionId
-				def backupId = backup.externalId
+				String backupId = backup.externalId
 				if(!backupId) {
 					def backupJobBackups = apiService.getBackupJobBackups(authConfig.apiUrl, session.token, backupJobId)
 					// find by MOR first
@@ -215,7 +218,7 @@ interface VeeamBackupExecutionProviderInterface extends BackupExecutionProvider 
 					}
 					// otherwise find by backup name
 					if(!backupId) {
-						backupId = backupJobBackups.data?.find { it.name?.toString() == backup.name }?.objectId
+						backupId = backupJobBackups.data?.find { it.name?.toString() == backup.name }?.objectId?.toString()
 						log.info("deleteBackup, found backup by name: ${backupId}")
 					}
 				}
@@ -224,15 +227,14 @@ interface VeeamBackupExecutionProviderInterface extends BackupExecutionProvider 
 					def removeTask = apiService.removeVmFromBackupJob(authConfig.apiUrl, session.token, backupJobId, backupId)
 					if(removeTask.success && removeTask.taskId) {
 						def removeTaskResults = apiService.waitForTask(authConfig + [token: session.token], removeTask.taskId.toString())
+						log.debug("deleteBackup removeTaskResults: ${removeTaskResults}")
 						if(removeTaskResults.success || removeTaskResults.msg?.toLowerCase()?.contains("only one object")) {
 							def backupJobBackups = apiService.getBackupJobBackups(authConfig.apiUrl, session.token, backupJobId)
-							log.debug("backupJobBackups results: ${backupJobBackups}")
-							log.debug("backupJobBackups size: ${backupJobBackups.data.size()}")
+							// veeam backup jobs must contain at least one vm, so its safe to disable (9.5u4-) or delete (v10+ only)
+							// when the only vm remaining is the one we're removing
 							if(backupJobBackups.success && backupJobBackups.data.size() <= 1 && backupJobBackups.data?.getAt(0)?.objectId?.toString() == backupId) {
-								// veeam backup jobs must contain at least one vm, so its safe to disable (9.5u4-) or delete (v10+ only)
-								// when the only vm remaining is the one we're removing
 								log.debug("The current backup is the last object in the job, removing the backup job")
-								ServiceResponse deleteResults = ((VeeamBackupProvider)this.plugin.getProviderByCode('veeam')).backupJobProvider.deleteBackupJob(backupJob)
+								ServiceResponse deleteResults = ((VeeamBackupProvider)this.plugin.getProviderByCode('veeam')).backupJobProvider.deleteBackupJob(backupJob, [:])
 								if(deleteResults.success && deleteResults.data?.taskId) {
 									def taskResults = apiService.waitForTask(authConfig + [token: session.token], deleteResults.data.taskId.toString())
 									if(taskResults.success) {
@@ -241,10 +243,10 @@ interface VeeamBackupExecutionProviderInterface extends BackupExecutionProvider 
 								} else {
 									rtn.success = false
 									rtn.msg = deleteResults.msg ?: "Unable to delete backup job"
-									log.debug(rtn.msg)
+									log.debug("deleteBackup: {}", rtn.msg)
 								}
 							} else {
-								log.debug("Backup Job ${backupId} contains one or more objects and can't be deleted.")
+								log.debug("Backup Job ${backupJobId} contains one or more objects and can't be deleted.")
 								rtn.success = true
 							}
 						} else {
