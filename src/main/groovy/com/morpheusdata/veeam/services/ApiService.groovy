@@ -30,6 +30,9 @@ class ApiService {
 	}
 
 	Map getAuthConfig(BackupProvider backupProviderModel) {
+		if(!backupProviderModel.account) {
+			backupProviderModel = this.plugin.morpheusContext.services.backupProvider.get(backupProviderModel.id)
+		}
 		def newBackupProvider = this.plugin.loadCredentials(backupProviderModel)
 		log.debug("newBackupProvider, credsLoaded: ${newBackupProvider.credentialLoaded}, credentialData: ${newBackupProvider.credentialData}")
 
@@ -1382,7 +1385,7 @@ class ApiService {
 				} else {
 					sleep(taskSleepInterval)
 				}
-			} else if(results.errorCode == 500) {
+			} else if(results.errorCode.toString() == "500") {
 				def errorMessage
 				try {
 					def response = new groovy.util.XmlSlurper(false,true).parseText(results.content)

@@ -3,6 +3,7 @@ package com.morpheusdata.veeam.backup
 import com.morpheusdata.core.MorpheusContext
 import com.morpheusdata.core.Plugin
 import com.morpheusdata.core.backup.BackupExecutionProvider
+import com.morpheusdata.core.backup.BackupJobProvider
 import com.morpheusdata.core.backup.response.BackupExecutionResponse
 import com.morpheusdata.core.data.DataFilter
 import com.morpheusdata.core.data.DataQuery
@@ -234,7 +235,8 @@ interface VeeamBackupExecutionProviderInterface extends BackupExecutionProvider 
 							// when the only vm remaining is the one we're removing
 							if(backupJobBackups.success && backupJobBackups.data.size() <= 1 && backupJobBackups.data?.getAt(0)?.objectId?.toString() == backupId) {
 								log.debug("The current backup is the last object in the job, removing the backup job")
-								ServiceResponse deleteResults = ((VeeamBackupProvider)this.plugin.getProviderByCode('veeam')).backupJobProvider.deleteBackupJob(backupJob, [:])
+								BackupJobProvider jobProvider = ((VeeamBackupProvider)this.plugin.getProviderByCode('veeam')).backupJobProvider
+								ServiceResponse deleteResults = jobProvider.deleteBackupJob(backupJob, [:])
 								if(deleteResults.success && deleteResults.data?.taskId) {
 									def taskResults = apiService.waitForTask(authConfig + [token: session.token], deleteResults.data.taskId.toString())
 									if(taskResults.success) {
