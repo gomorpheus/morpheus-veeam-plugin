@@ -420,10 +420,12 @@ class VeeamBackupProvider extends AbstractBackupProvider {
 			def sessionId = tokenResults.sessionId
 			apiService.logoutSession(opts.authConfig.apiUrl, token, sessionId)
 		} else {
-			if(tokenResults?.errorCode == '404' || tokenResults?.errorCode == 404)
+			if(tokenResults?.errorCode?.toString() == "404") {
 				rtn.found = false
-			if(tokenResults?.errorCode == '401' || tokenResults?.errorCode == 401)
+			}
+			if(tokenResults?.errorCode?.toString() == "401") {
 				rtn.invalidLogin = true
+			}
 		}
 		return rtn
 	}

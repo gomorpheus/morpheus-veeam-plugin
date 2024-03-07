@@ -743,7 +743,7 @@ class ApiService {
 		if(results?.success == true) {
 			def response = new groovy.util.XmlSlurper().parseText(results.content)
 			rtn.taskId = response.TaskId.toString()
-		} else if(results?.errorCode == 404) {
+		} else if(results?.errorCode?.toString() == "404") {
 			rtn.success = true
 		}
 		return rtn
@@ -874,7 +874,7 @@ class ApiService {
 			if(results?.success == true) {
 				def response = new groovy.util.XmlSlurper().parseText(results.content)
 				rtn.data.taskId = response.TaskId.toString()
-			} else if(results.errorCode == 400) {
+			} else if(results.errorCode?.toString() == "400") {
 				rtn.success = true
 			}
 		} catch(Exception e) {
@@ -1385,7 +1385,7 @@ class ApiService {
 				} else {
 					sleep(taskSleepInterval)
 				}
-			} else if(results.errorCode.toString() == "500") {
+			} else if(results.errorCode?.toString() == "500") {
 				def errorMessage
 				try {
 					def response = new groovy.util.XmlSlurper(false,true).parseText(results.content)

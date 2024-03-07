@@ -236,7 +236,7 @@ interface VeeamBackupExecutionProviderInterface extends BackupExecutionProvider 
 							if(backupJobBackups.success && backupJobBackups.data.size() <= 1 && backupJobBackups.data?.getAt(0)?.objectId?.toString() == backupId) {
 								log.debug("The current backup is the last object in the job, removing the backup job")
 								BackupJobProvider jobProvider = ((VeeamBackupProvider)this.plugin.getProviderByCode('veeam')).backupJobProvider
-								ServiceResponse deleteResults = jobProvider.deleteBackupJob(backupJob, [:])
+								ServiceResponse deleteResults = jobProvider.deleteBackupJob(backupJob, [force:true])
 								if(deleteResults.success && deleteResults.data?.taskId) {
 									def taskResults = apiService.waitForTask(authConfig + [token: session.token], deleteResults.data.taskId.toString())
 									if(taskResults.success) {

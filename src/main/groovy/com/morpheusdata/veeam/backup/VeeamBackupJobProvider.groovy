@@ -148,11 +148,20 @@ class VeeamBackupJobProvider implements BackupJobProvider {
 				def authConfig = apiService.getAuthConfig(backupProvider)
 				def session = apiService.loginSession(authConfig)
 				def token = session.token
-				if(apiVersion > 1.4) {
-					rtn = apiService.deleteBackupJob(apiUrl, token, backupJobId)
+				def backupsResponse = apiService.getBackupJobBackups(authConfig.apiUrl, session.token, backupJobId)
+				// check if there are any backups for this job that morpheus is not aware of and would prevent the job from being deleted. If removing
+				// the job and we're aware there are backups in the job but still want to remove it, we'll need to force it.
+				log.debug("backup job backups: {}", backupsResponse.data?.size())
+				if(backupsResponse.success && (backupsResponse.data?.size() <= 0 || opts.force == true)) {
+					if(apiVersion > 1.4) {
+						rtn = apiService.deleteBackupJob(apiUrl, token, backupJobId)
+					} else {
+						//Note: This Veeam API version does not allow delete backup job, best we can do is turn off schedule
+						rtn = apiService.disableBackupJobSchedule(apiUrl, token, backupJobId)
+					}
 				} else {
-					//Note: This Veeam API version does not allow delete backup job, best we can do is turn off schedule
-					rtn = apiService.disableBackupJobSchedule(apiUrl, token, backupJobId)
+					rtn.success = false
+					rtn.msg = "Backup job is in use and cannot be deleted."
 				}
 				if(!rtn.success) {
 					rtn.msg = rtn.msg ?: "Unable to delete backup job"
