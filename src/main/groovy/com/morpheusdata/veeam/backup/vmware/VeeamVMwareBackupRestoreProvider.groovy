@@ -1,4 +1,4 @@
-package com.morpheusdata.veeam.backup.hyperv
+package com.morpheusdata.veeam.backup.vmware
 
 import com.morpheusdata.core.MorpheusContext
 import com.morpheusdata.core.Plugin
@@ -8,14 +8,14 @@ import com.morpheusdata.veeam.services.ApiService
 import groovy.util.logging.Slf4j
 
 @Slf4j
-class VeeamHypervBackupRestoreProviderInterface implements VeeamBackupRestoreProviderInterface {
+class VeeamVMwareBackupRestoreProvider implements VeeamBackupRestoreProviderInterface {
 
 	Plugin plugin
 	MorpheusContext morpheus
 	ApiService apiService
 	VeeamBackupTypeProvider backupTypeProvider
 
-	VeeamHypervBackupRestoreProviderInterface(Plugin plugin, MorpheusContext morpheus, VeeamBackupTypeProvider backupTypeProvider, ApiService apiService) {
+	VeeamVMwareBackupRestoreProvider(Plugin plugin, MorpheusContext morpheus, VeeamBackupTypeProvider backupTypeProvider, ApiService apiService) {
 		this.plugin = plugin
 		this.morpheus = morpheus
 		this.apiService = apiService

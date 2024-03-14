@@ -8,14 +8,14 @@ import com.morpheusdata.veeam.services.ApiService
 import groovy.util.logging.Slf4j
 
 @Slf4j
-class VeeamScvmmBackupRestoreProviderInterface implements VeeamBackupRestoreProviderInterface {
+class VeeamScvmmBackupRestoreProvider implements VeeamBackupRestoreProviderInterface {
 
 	Plugin plugin
 	MorpheusContext morpheus
 	ApiService apiService
 	VeeamBackupTypeProvider backupTypeProvider
 
-	VeeamScvmmBackupRestoreProviderInterface(Plugin plugin, MorpheusContext morpheus, VeeamBackupTypeProvider backupTypeProvider, ApiService apiService) {
+	VeeamScvmmBackupRestoreProvider(Plugin plugin, MorpheusContext morpheus, VeeamBackupTypeProvider backupTypeProvider, ApiService apiService) {
 		this.plugin = plugin
 		this.morpheus = morpheus
 		this.apiService = apiService

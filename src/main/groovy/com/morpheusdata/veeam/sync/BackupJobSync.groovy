@@ -2,6 +2,7 @@ package com.morpheusdata.veeam.sync
 
 import com.morpheusdata.core.BulkCreateResult
 import com.morpheusdata.core.MorpheusContext
+import com.morpheusdata.core.data.DataQuery
 import com.morpheusdata.core.util.SyncTask
 import com.morpheusdata.model.BackupJob
 import com.morpheusdata.model.BackupProvider
@@ -45,7 +46,7 @@ class BackupJobSync {
 				}.onAdd { itemsToAdd ->
 					addMissingBackupJobs(itemsToAdd)
 				}.withLoadObjectDetailsFromFinder { List<SyncTask.UpdateItemDto<BackupJobIdentityProjection, Map>> updateItems ->
-					return morpheusContext.async.backupJob.listById(updateItems.collect { it.existingItem.id } as List<Long>)
+					return morpheusContext.async.backupJob.list( new DataQuery(backupProviderModel.account).withFilter("id", 'in', updateItems.collect { it.existingItem.id }))
 				}.start()
 			} else {
 				log.error("Error listing backup jobs")
@@ -62,10 +63,11 @@ class BackupJobSync {
 		def adds = []
 		def objCategory = "veeam.job.${backupProviderModel.id}"
 		for(cloudItem in itemsToAdd) {
-			def addConfig = [account       : backupProviderModel.account, backupProvider: backupProviderModel, code: objCategory + '.' + cloudItem.uid,
-			                 category      : objCategory, name: cloudItem.name, externalId: cloudItem.externalId,
-			                 source        : 'veeam', enabled: (cloudItem.scheduleEnabled == 'true'), platform: (cloudItem.platform?.toLowerCase() ?: 'all'),
-			                 cronExpression: cloudItem.scheduleCron
+			def addConfig = [
+				account: backupProviderModel.account, backupProvider: backupProviderModel, code: objCategory + '.' + cloudItem.uid,
+				category: objCategory, name: cloudItem.name, externalId: cloudItem.externalId,
+				source: 'veeam', enabled: (cloudItem.scheduleEnabled == 'true'), platform: (cloudItem.platform?.toLowerCase() ?: 'all'),
+				cronExpression: cloudItem.scheduleCron
 			]
 			//backup server
 			def backupServerRef = cloudItem.links?.link?.find { it.type == 'BackupServerReference' }
@@ -76,7 +78,8 @@ class BackupJobSync {
 			adds << add
 		}
 
-		if(adds) {
+
+		if(adds.size() > 0) {
 			log.debug "adding backup jobs: ${adds}"
 			BulkCreateResult<BackupJob> result =  morpheusContext.async.backupJob.bulkCreate(adds).blockingGet()
 			if(!result.success) {

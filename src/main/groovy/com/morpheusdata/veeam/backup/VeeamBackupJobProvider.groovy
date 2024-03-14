@@ -148,21 +148,33 @@ class VeeamBackupJobProvider implements BackupJobProvider {
 				def authConfig = apiService.getAuthConfig(backupProvider)
 				def session = apiService.loginSession(authConfig)
 				def token = session.token
-				def backupsResponse = apiService.getBackupJobBackups(authConfig.apiUrl, session.token, backupJobId)
-				// check if there are any backups for this job that morpheus is not aware of and would prevent the job from being deleted. If removing
-				// the job and we're aware there are backups in the job but still want to remove it, we'll need to force it.
-				log.debug("backup job backups: {}", backupsResponse.data?.size())
-				if(backupsResponse.success && (backupsResponse.data?.size() <= 0 || opts.force == true)) {
-					if(apiVersion > 1.4) {
-						rtn = apiService.deleteBackupJob(apiUrl, token, backupJobId)
+
+				// Make sure the backup exists before we attempt remove the backups in the job. A previous attempt to delete the backup job
+				// may have occurred during backup delete and reported job delete success before the backup was removed.
+				def backupJobResults = apiService.getBackupJob(apiUrl, token, backupJobId)
+				log.debug("backup job results: {}", backupJobResults)
+				if(backupJobResults.success) {
+					def backupsResponse = apiService.getBackupJobBackups(authConfig.apiUrl, session.token, backupJobId)
+					// check if there are any backups for this job that morpheus is not aware of and would prevent the job from being deleted. If removing
+					// the job and we're aware there are backups in the job but still want to remove it, we'll need to force it.
+					log.debug("backup job backups: {}", backupsResponse.data?.size())
+					if(backupsResponse.success && (backupsResponse.data?.size() <= 0 || opts.force == true)) {
+						if(apiVersion > 1.4) {
+							rtn = apiService.deleteBackupJob(apiUrl, token, backupJobId)
+						} else {
+							//Note: This Veeam API version does not allow delete backup job, best we can do is turn off schedule
+							rtn = apiService.disableBackupJobSchedule(apiUrl, token, backupJobId)
+						}
 					} else {
-						//Note: This Veeam API version does not allow delete backup job, best we can do is turn off schedule
-						rtn = apiService.disableBackupJobSchedule(apiUrl, token, backupJobId)
+						rtn.success = false
+						rtn.msg = "Backup job is in use and cannot be deleted."
 					}
-				} else {
-					rtn.success = false
-					rtn.msg = "Backup job is in use and cannot be deleted."
+				} else if(backupJobResults.errorCode.toString() == "404") {
+					log.debug("backup job not found: ${backupJobId}, assuming it's already gone")
+					// job is already gone, carry on
+					rtn.success = true
 				}
+
 				if(!rtn.success) {
 					rtn.msg = rtn.msg ?: "Unable to delete backup job"
 				}

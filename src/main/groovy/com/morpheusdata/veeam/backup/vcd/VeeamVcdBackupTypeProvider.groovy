@@ -194,7 +194,7 @@ class VeeamVcdBackupTypeProvider extends VeeamBackupTypeProvider {
 	@Override
 	VeeamBackupExecutionProviderInterface getExecutionProvider() {
 		if(!this.executionProvider) {
-			this.executionProvider = new VeeamVcdBackupExecutionProviderInterface(plugin, morpheus, this, apiService)
+			this.executionProvider = new VeeamVcdBackupExecutionProvider(plugin, morpheus, this, apiService)
 		}
 		return this.executionProvider
 	}
@@ -206,7 +206,7 @@ class VeeamVcdBackupTypeProvider extends VeeamBackupTypeProvider {
 	@Override
 	VeeamBackupRestoreProviderInterface getRestoreProvider() {
 		if(!this.restoreProvider) {
-			this.restoreProvider = new VeeamVcdBackupRestoreProviderInterface(plugin, morpheus, this, apiService)
+			this.restoreProvider = new VeeamVcdBackupRestoreProvider(plugin, morpheus, this, apiService)
 		}
 		return this.restoreProvider
 	}

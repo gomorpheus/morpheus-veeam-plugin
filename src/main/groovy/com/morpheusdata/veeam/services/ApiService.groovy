@@ -397,6 +397,7 @@ class ApiService {
 	}
 
 	static getBackupJob(url, token, backupJobId){
+		log.debug("getBackupJob: ${backupJobId}")
 		def rtn = [success:false]
 		def headers = buildHeaders([:], token)
 		def query = [format: "Entity"]
@@ -406,12 +407,20 @@ class ApiService {
 		rtn.results = results
 		log.debug("got: ${results}")
 		rtn.success = results?.success
-		def job = new groovy.util.XmlSlurper().parseText(results.content)
-		def name = job['@Name'].toString()
-		rtn.jobId = backupJobId
-		rtn.jobName = name
-		rtn.scheduleEnabled = job.ScheduleEnabled.toString()
-		rtn.scheduleCron = VeeamScheduleUtils.decodeScheduling(job)
+		if(results.success) {
+			def job = new groovy.util.XmlSlurper().parseText(results.content)
+			def name = job['@Name'].toString()
+			rtn.jobId = backupJobId
+			rtn.jobName = name
+			rtn.scheduleEnabled = job.ScheduleEnabled.toString()
+			rtn.scheduleCron = VeeamScheduleUtils.decodeScheduling(job)
+		} else {
+			rtn.content = results.content
+			rtn.data = results.data
+			rtn.errorCode = results.errorCode
+			rtn.headers = results.headers
+		}
+
 		return rtn
 	}
 
@@ -535,7 +544,7 @@ class ApiService {
 		def rtn = [success:false, error:false, data:null, vmId:null]
 		def attempt = 0
 		def keepGoing = true
-		def maxAttempts = maxWaitTime / taskSleepInterval
+		def maxAttempts = (maxWaitTime * 1000l) / taskSleepInterval
 		while(keepGoing == true && attempt < maxAttempts) {
 			//load the vm
 			def results = findVm(authConfig, vmObjectRefs, opts)
@@ -1404,6 +1413,7 @@ class ApiService {
 					// "There is no backup task with id [task-297] in current rest session"
 					// the task has completed and cleaned up???
 					rtn.success = true
+					rtn.error = true
 				} else {
 					rtn.msg = errorMessage
 				}

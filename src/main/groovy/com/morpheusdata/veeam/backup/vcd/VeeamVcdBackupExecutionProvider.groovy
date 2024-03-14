@@ -8,14 +8,14 @@ import com.morpheusdata.veeam.services.ApiService
 import groovy.util.logging.Slf4j
 
 @Slf4j
-class VeeamVcdBackupExecutionProviderInterface implements VeeamBackupExecutionProviderInterface {
+class VeeamVcdBackupExecutionProvider implements VeeamBackupExecutionProviderInterface {
 
 	Plugin plugin
 	MorpheusContext morpheus
 	ApiService apiService
 	VeeamBackupTypeProvider backupTypeProvider
 
-	VeeamVcdBackupExecutionProviderInterface(Plugin plugin, MorpheusContext morpheus, VeeamBackupTypeProvider backupTypeProvider, ApiService apiService) {
+	VeeamVcdBackupExecutionProvider(Plugin plugin, MorpheusContext morpheus, VeeamBackupTypeProvider backupTypeProvider, ApiService apiService) {
 		this.plugin = plugin
 		this.morpheus = morpheus
 		this.apiService = apiService

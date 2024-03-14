@@ -14,14 +14,14 @@ import groovy.util.logging.Slf4j
 import groovy.xml.StreamingMarkupBuilder
 
 @Slf4j
-class VeeamVcdBackupRestoreProviderInterface implements VeeamBackupRestoreProviderInterface {
+class VeeamVcdBackupRestoreProvider implements VeeamBackupRestoreProviderInterface {
 
 	Plugin plugin
 	MorpheusContext morpheus
 	ApiService apiService
 	VeeamBackupTypeProvider backupTypeProvider
 
-	VeeamVcdBackupRestoreProviderInterface(Plugin plugin, MorpheusContext morpheus, VeeamBackupTypeProvider backupTypeProvider, ApiService apiService) {
+	VeeamVcdBackupRestoreProvider(Plugin plugin, MorpheusContext morpheus, VeeamBackupTypeProvider backupTypeProvider, ApiService apiService) {
 		this.plugin = plugin
 		this.morpheus = morpheus
 		this.apiService = apiService

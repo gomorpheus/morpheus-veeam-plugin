@@ -237,10 +237,24 @@ interface VeeamBackupExecutionProviderInterface extends BackupExecutionProvider 
 								log.debug("The current backup is the last object in the job, removing the backup job")
 								BackupJobProvider jobProvider = ((VeeamBackupProvider)this.plugin.getProviderByCode('veeam')).backupJobProvider
 								ServiceResponse deleteResults = jobProvider.deleteBackupJob(backupJob, [force:true])
+								log.debug("Delete job deleteResults: ${deleteResults}")
 								if(deleteResults.success && deleteResults.data?.taskId) {
+									// todo: wait for backup job not found???
+									log.debug("delete job, waiting for task: ${deleteResults.data.taskId}")
 									def taskResults = apiService.waitForTask(authConfig + [token: session.token], deleteResults.data.taskId.toString())
+									log.debug("task results: ${taskResults}")
 									if(taskResults.success) {
-										rtn.success = true
+										if(taskResults.error) {
+											def waitDeleteResults = waitForJobDeleted(authConfig, session.token, backupJobId)
+											if(waitDeleteResults.success) {
+												rtn.success = true
+											} else {
+												rtn.success = false
+												rtn.msg = waitDeleteResults.msg ?: "Unable to delete backup job"
+											}
+										} else {
+											rtn.success = true
+										}
 									}
 								} else {
 									rtn.success = false
@@ -476,6 +490,33 @@ interface VeeamBackupExecutionProviderInterface extends BackupExecutionProvider 
 			executionResponse.backupResult.statusMessage = backupStartResponse.msg
 		}
 		executionResponse.updates = true
+	}
+
+	default waitForJobDeleted(Map authConfig, String token, String backupJobId) {
+		def rtn = [success:false, error:false, data:null, vmId:null]
+		def attempt = 0
+		def keepGoing = true
+		def sleepInterval = 5l * 1000l //5 seconds
+		def maxAttempts = 300000 / sleepInterval
+		while(keepGoing == true && attempt < maxAttempts) {
+			//load the vm
+			def results = apiService.getBackupJob(authConfig.apiUrl, token, backupJobId)
+			if(results.success) {
+				attempt++
+				sleep(sleepInterval)
+			} else {
+				if(results.errorCode.toString() == "404") {
+					rtn.success = true
+				} else {
+					rtn = results
+				}
+				keepGoing = false
+
+			}
+
+
+		}
+		return rtn
 	}
 
 	/**

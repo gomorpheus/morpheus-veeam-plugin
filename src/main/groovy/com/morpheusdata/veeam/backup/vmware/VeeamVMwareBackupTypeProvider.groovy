@@ -172,7 +172,7 @@ class VeeamVMwareBackupTypeProvider extends VeeamBackupTypeProvider {
 	@Override
 	VeeamBackupExecutionProviderInterface getExecutionProvider() {
 		if(!this.executionProvider) {
-			this.executionProvider = new VeeamVMwareBackupExecutionProviderInterface(plugin, morpheus, this, apiService)
+			this.executionProvider = new VeeamVMwareBackupExecutionProvider(plugin, morpheus, this, apiService)
 		}
 		return this.executionProvider
 	}
@@ -184,7 +184,7 @@ class VeeamVMwareBackupTypeProvider extends VeeamBackupTypeProvider {
 	@Override
 	VeeamBackupRestoreProviderInterface getRestoreProvider() {
 		if(!this.restoreProvider) {
-			this.restoreProvider = new VeeamVMwareBackupRestoreProviderInterface(plugin, morpheus, this, apiService)
+			this.restoreProvider = new VeeamVMwareBackupRestoreProvider(plugin, morpheus, this, apiService)
 		}
 		return this.restoreProvider
 	}
