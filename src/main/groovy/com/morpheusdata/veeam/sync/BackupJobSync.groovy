@@ -90,14 +90,7 @@ class BackupJobSync {
 
 	private deleteBackupJobs(List<BackupJobIdentityProjection> removeItems) {
 		log.debug "deleteBackupJobs: ${removeItems}"
-		for(BackupJobIdentityProjection removeItem in removeItems) {
-			try {
-				log.debug "removing backup job ${removeItem.name}"
-				morpheusContext.async.backupJob.remove(removeItem).blockingGet()
-			} catch(Exception ex) {
-				log.error "Error removing backup job: ${removeItem.name}", ex
-			}
-		}
+		morpheusContext.async.backupJob.remove(removeItems).subscribe().dispose()
 	}
 
 	private updateMatchedBackupJobs(List<SyncTask.UpdateItem<BackupJob, Map>> updateItems) {

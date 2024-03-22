@@ -94,10 +94,7 @@ class BackupRepositorySync {
 
 	private deleteBackupRepositories(List<BackupRepositoryIdentityProjection> removeItems) {
 		log.debug "deleteBackupRepositories: ${removeItems}"
-		for(BackupRepositoryIdentityProjection removeItem in removeItems) {
-			log.debug "removing backup repository ${removeItem.name}"
-			morpheusContext.async.backupRepository.remove(removeItem).blockingGet()
-		}
+		morpheusContext.async.backupRepository.remove(removeItems).subscribe().dispose()
 	}
 
 	private updateMatchedBackupRepositories(List<SyncTask.UpdateItem<BackupRepository, Map>> updateItems) {
