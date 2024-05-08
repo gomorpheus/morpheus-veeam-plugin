@@ -30,8 +30,7 @@ class VeeamHypervBackupExecutionProvider implements VeeamBackupExecutionProvider
 
 	@Override
 	ServiceResponse startVeeamZip(Backup backup, BackupProvider backupProvider, LinkedHashMap<String, Object> authConfig, backupServerId, String veeamHierarchyRef, BackupResult lastResult, ComputeServer computeServer) {
-		Locale locale = morpheus.services.webRequest.getLocale()
-		def error = morpheus.services.webRequest.getMessage("gomorpheus.error.veeam.hypervOndemandFullBackupNotSupported", null, locale)
+		def error = morpheus.services.localization.get("gomorpheus.error.veeam.hypervOndemandFullBackupNotSupported")
 		return ServiceResponse.error(error)
 	}
 }

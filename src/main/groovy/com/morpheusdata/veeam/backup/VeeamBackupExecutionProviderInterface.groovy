@@ -393,31 +393,12 @@ interface VeeamBackupExecutionProviderInterface extends BackupExecutionProvider 
 
 						if(hasFullBackup && veeamObjectRef) {
 							def startResponse = startQuickBackup(authConfig, backupServerId, veeamObjectRef, lastResult)
-							updateBackupExecutionResponse((BackupExecutionResponse) rtn.data, startResponse, 'quickbackup')
-							rtn.success = startResponse.success
-							if(startResponse.success == false) {
-								rtn.data.backupResult.status = BackupResult.Status.FAILED.toString()
-								rtn.data.backupResult.statusMessage = startResponse.msg
-								rtn.msg = startResponse.msg
-								rtn.success = false
-							}
+							rtn = updateBackupExecutionResponse(rtn, startResponse, 'quickbackup')
 						} else if(veeamHierarchyRef) {
 							def startResponse = startVeeamZip(backup, backupProvider, authConfig, backupServerId, veeamHierarchyRef, lastResult, computeServer)
-							updateBackupExecutionResponse((BackupExecutionResponse)rtn.data, startResponse, 'veeamzip')
-							rtn.success = startResponse.success
-							if(startResponse.success == false) {
-								rtn.data.backupResult.status = BackupResult.Status.FAILED.toString()
-								rtn.data.backupResult.statusMessage = startResponse.msg
-								rtn.msg = startResponse.msg
-								rtn.success = false
-							}
+							rtn = updateBackupExecutionResponse(rtn, startResponse, 'veeamzip')
 						} else {
-							rtn.success = false
-							rtn.data.backupResult.status = BackupResult.Status.FAILED.toString()
-							rtn.data.backupResult.statusMessage = "No hierarchy object ref found."
-							rtn.data.updates = true
-							rtn.msg = rtn.data.backupResult.statusMessage
-							rtn.success = false
+							rtn = updateBackupExecutionResponse(rtn, ServiceResponse.error("No hierarchy object ref found."), null)
 						}
 
 						log.debug("executeBackup result: " + rtn)
@@ -479,17 +460,24 @@ interface VeeamBackupExecutionProviderInterface extends BackupExecutionProvider 
 		return rtn
 	}
 
-	default updateBackupExecutionResponse(BackupExecutionResponse executionResponse, ServiceResponse backupStartResponse, String backupType) {
+	default ServiceResponse<BackupExecutionResponse> updateBackupExecutionResponse(ServiceResponse response, ServiceResponse backupStartResponse, String backupType = null) {
 		log.debug("updateBackupExecutionResponse: ${backupStartResponse}, ${backupType}")
+		def executionResponse = response.data
 		if(backupStartResponse.success) {
 			executionResponse.backupResult.externalId = backupStartResponse.data.backupSessionId
 			executionResponse.backupResult.startDate = DateUtility.parseDate(backupStartResponse.data.startDate as CharSequence)
 			executionResponse.backupResult.backupType = backupType
+			response.success = true
 		} else {
+			def failureMessage = backupStartResponse.msg ?: backupStartResponse.error
 			executionResponse.backupResult.status = BackupResult.Status.FAILED.toString()
-			executionResponse.backupResult.statusMessage = backupStartResponse.msg
+			executionResponse.backupResult.statusMessage = failureMessage
+			response.msg = failureMessage
+			response.success = false
 		}
 		executionResponse.updates = true
+
+		return response
 	}
 
 	default waitForJobDeleted(Map authConfig, String token, String backupJobId) {
