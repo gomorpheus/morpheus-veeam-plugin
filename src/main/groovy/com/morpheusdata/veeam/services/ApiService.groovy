@@ -424,6 +424,38 @@ class ApiService {
 		return rtn
 	}
 
+	static getBackupJobJson(url, token, backupJobId){
+		def rtn = [success:false]
+		def headers = buildHeaders([:], token)
+		def query = [format: "Entity"]
+		HttpApiClient httpApiClient = new HttpApiClient()
+		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
+		def results = httpApiClient.callJsonApi(url, "/api/jobs/${backupJobId}", requestOpts, 'GET')
+		log.debug("getBackupJobJson got: ${results}")
+		rtn.success = results?.success
+		if(rtn.success) {
+			rtn.data = results.data
+		} else {
+			rtn.content = results.content
+			rtn.data = results.data
+			rtn.errorCode = results.errorCode
+			rtn.headers = results.headers
+		}
+		return rtn
+	}
+
+	static updateBackupJob(String url, String token, String backupJobId, Map config) {
+		def headers = buildHeaders([:], token)
+		def query = [format: "Entity"]
+		def body = config
+		HttpApiClient httpApiClient = new HttpApiClient()
+		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query, body:body)
+		def results = httpApiClient.callJsonApi(url, "/api/jobs/${backupJobId}", requestOpts, 'PUT')
+		log.debug("updateBackupJob results: ${results}")
+
+		return results
+	}
+
 	static getBackupJobBackups(url, token, backupJobId){
 		def rtn = [success:false]
 		def headers = buildHeaders([:], token)
@@ -446,7 +478,7 @@ class ApiService {
 		def tokenResults = getToken(authConfig)
 		log.debug("cloneBackupJob tokenResults: ${tokenResults}")
 		if(tokenResults.success == true) {
-			def sourceJob = getBackupJob(authConfig.apiUrl, tokenResults.token, cloneId)
+			def sourceJob = getBackupJobJson(authConfig.apiUrl, tokenResults.token, cloneId)?.data
 			def apiPath = authConfig.basePath + '/jobs/' + cloneId
 			def headers = buildHeaders([:], tokenResults.token)
 			def query = [action:'clone']
@@ -473,16 +505,25 @@ class ApiService {
 					log.debug("taskResults: ${taskResults}")
 					if(taskResults.success == true) {
 						//find the job link
+						def clonedJobInfo = null
 						def jobLink = taskResults.links?.find{ it.type == 'Job' }
 						if(jobLink) {
 							rtn.jobId = VeeamUtils.parseEntityId(jobLink.href)
-							def jobInfo = getBackupJob(authConfig.apiUrl, tokenResults.token, rtn.jobId)
-							rtn.scheduleCron = jobInfo.scheduleCron
+							clonedJobInfo = getBackupJobJson(authConfig.apiUrl, tokenResults.token, rtn.jobId)?.data
+							rtn.scheduleCron = clonedJobInfo.scheduleCron
 							rtn.success = true
 						} else {
 							rtn.msg = taskResults.msg
 							log.error("Error cloning job: ${taskResults.msg}")
 						}
+
+						// copy retention info to the new job (not done by the job clone API)
+						if(sourceJob.jobInfo && clonedJobInfo) {
+							def updateJobConfig = clonedJobInfo
+							updateJobConfig.jobInfo.SimpleRetentionPolicy = sourceJob.jobInfo.SimpleRetentionPolicy
+							updateBackupJob(authConfig.apiUrl, tokenResults.token, updateJobConfig)
+						}
+						
 						// ensure the job is enabled if the source job was enabled
 						if(sourceJob.scheduleEnabled == "true" && rtn.jobId) {
 							// The only way I found to ensure a job is enabled after cloning is to first
