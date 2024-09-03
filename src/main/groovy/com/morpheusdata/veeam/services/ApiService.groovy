@@ -1252,7 +1252,7 @@ class ApiService {
 		return rtn
 	}
 
-	// this should just take a restore point or a restore endpoint URL, finding the restore info can go in the restor execution service
+	// this should just take a restore point or a restore endpoint URL, finding the restore info can go in the restore execution service
 	static restoreVM(String url, String token, String restorePath, String restoreSpec, opts=[:]) {
 		log.debug("restoreVM: ${url}, ${restorePath}, ${restoreSpec} ${opts}")
 		def rtn = [success:false]
