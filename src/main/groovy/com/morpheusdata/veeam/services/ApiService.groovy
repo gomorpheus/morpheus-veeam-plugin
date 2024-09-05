@@ -983,27 +983,26 @@ class ApiService {
 	static getBackupResult(url, token, backupSessionId) {
 		def rtn = [success:false]
 		def backupResult = [:]
-		def headers = buildHeaders([:], token)
+		def headers = buildHeaders([:], token, [format:"json"])
 		def query = [format: "Entity"]
 		HttpApiClient httpApiClient = new HttpApiClient()
 		HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
 		def results = httpApiClient.callJsonApi(url, "/api/backupSessions/${backupSessionId}", requestOpts, 'GET')
-		log.debug("got: ${results}")
+		log.debug("getBackupResult got: ${results}")
 		rtn.success = results?.success
 		if(results?.success == true) {
-			def response = new groovy.util.XmlSlurper().parseText(results.content)
-			def jobUid = response.JobUid.toString()
-			def jobName = response.JobName.toString()
-			def startTime = response.CreationTimeUTC.toString()
-			def endTime = response.EndTimeUTC.toString()
-			def state = response.State.toString()
-			def result = response.Result.toString()
-			def progress = response.Progress.toString()
-			backupResult = [backupSessionId: backupSessionId, backupJobName: jobName, startTime: startTime, endTime: endTime, state: state, result: result, progress: progress, links: []]
-			response.Links.Link.each { link ->
-				backupResult.links << [href: link['@Href'], type: link['@Type']]
-			}
-			if(result == "Success" || result == "Warning"){
+			backupResult = [
+				backupSessionId: backupSessionId,
+				backupJobName: results.data?.JobName?.toString(),
+				startTime: results.data?.CreationTimeUTC?.toString(),
+				endTime: results.data?.EndTimeUTC?.toString(),
+				state: results.data?.State?.toString(),
+				result: results.data?.Result?.toString(),
+				progress: results.data?.Progress?.toString(),
+				links: results.data?.Links
+			]
+			log.debug("getBackupResult Links: ${results.data?.Links}")
+			if(backupResult.result == "Success" || backupResult.result == "Warning"){
 				def stats = getBackupResultStats(url, token, backupSessionId)
 				backupResult.totalSize = stats?.totalSize ?: 0
 			}
@@ -1488,7 +1487,7 @@ class ApiService {
 		def tokenResults = getToken(authConfig)
 		if(tokenResults.success == true) {
 			def uri = new URI(apiUri)
-			def headers = buildHeaders([:], tokenResults.token)
+			def headers = buildHeaders([:], tokenResults.token, [format:'json'])
 			def query = [format: "Entity"]
 			HttpApiClient httpApiClient = new HttpApiClient()
 			HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions(headers:headers, queryParams: query)
