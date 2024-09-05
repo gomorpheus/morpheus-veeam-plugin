@@ -530,7 +530,6 @@ interface VeeamBackupExecutionProviderInterface extends BackupExecutionProvider 
 				def backupSessionId = backupResult.externalId ?: backupResultConfig.backupSessionId
 				Workload workload = morpheus.services.workload.find(new DataQuery().withFilter("id", backup.containerId).withJoins("server", "server.zone", "server.zone.zoneType"))
 				def server = workload?.server
-				def cloud = server.cloud
 
 				log.debug("refreshBackupResult backupSessionId: ${backupSessionId}")
 				if(backupSessionId) {
@@ -538,6 +537,7 @@ interface VeeamBackupExecutionProviderInterface extends BackupExecutionProvider 
 					def getBackupResult = apiService.getBackupResult(apiUrl, token, backupSessionId)
 					def backupSession = getBackupResult.result
 
+					log.debug("Backup session result: ${getBackupResult}")
 					if(backupSession) {
 						boolean doUpdate = false
 
@@ -641,6 +641,9 @@ interface VeeamBackupExecutionProviderInterface extends BackupExecutionProvider 
 							log.debug("Logout session ${sessionId}")
 							apiService.logoutSession(apiUrl, token, sessionId)
 						}
+					} else {
+						// backup session not yet available via the API, probably still propagating thru the system, try again next refresh
+						rtn.success = true
 					}
 				} else {
 					rtn.success = true

@@ -152,7 +152,7 @@ interface VeeamBackupRestoreProviderInterface extends BackupRestoreProvider {
 	/**
 	 * Execute the backup restore on the external system
 	 * @param backupRestoreModel restore to be executed
-	 * @param backupResultModel refernce to the backup result
+	 * @param backupResultModel reference to the backup result
 	 * @param backupModel reference to the backup associated with the backup result
 	 * @param opts optional parameters
 	 * @return a {@link ServiceResponse} object. A ServiceResponse with a false success will indicate a failed
